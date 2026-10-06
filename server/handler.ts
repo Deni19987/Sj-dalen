@@ -142,13 +142,23 @@ export function createHandler(query: Query, options: HandlerOptions) {
     } catch (err) {
       if (err instanceof HttpError) return json({ error: err.message }, err.status);
       console.error(err);
-      // Saknad kolumn/tabell = databasen har inte uppdaterats till den här versionen av koden.
+      // Saknad kolumn/tabell/funktion: antingen ligger databasen efter koden eller så är det ett fel i en
+      // SQL-fråga. Besökare får ett neutralt meddelande, admin en ledtråd om var felet syns.
       const code = (err as { code?: string })?.code;
-      if (code === "42703" || code === "42P01")
+      if (code === "42703" || code === "42P01" || code === "42883") {
+        console.error(
+          "Kolumn, tabell eller funktion saknas i databasen. Ligger databasen efter koden? Production uppdateras " +
+            "vid deploy; lokalt: starta om dev-servern (dev:local) eller kör npm run db:setup -- --schema-only.",
+        );
         return json(
-          { error: "Databasen är inte uppdaterad för den här versionen av sajten. Kör npm run db:setup -- --schema-only." },
+          {
+            error: path.startsWith("/admin")
+              ? "Databasfel: en kolumn, tabell eller funktion saknas. Databasen kan ligga efter koden – se funktionsloggen i Netlify."
+              : "Tjänsten är tillfälligt otillgänglig. Försök igen om en stund.",
+          },
           503,
         );
+      }
       return json({ error: "Något gick fel. Försök igen om en stund." }, 500);
     }
   };

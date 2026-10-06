@@ -165,6 +165,13 @@ create table if not exists public.admin_users (
   last_login_at  timestamptz
 );
 
+-- Vilka versioner av den här filen som har körts (sätts av scripts/db-setup.mjs, som hoppar över
+-- migreringen när filen inte har ändrats – då tas inga lås alls vid en deploy)
+create table if not exists public.schema_migrations (
+  hash        text primary key,
+  applied_at  timestamptz not null default now()
+);
+
 -- Webbplatsinställningar (kontaktuppgifter, öppettider, notisbanner …)
 create table if not exists public.settings (
   key         text primary key,

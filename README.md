@@ -61,28 +61,38 @@ npm run db:setup       # skapar tabeller + funktioner och lägger in startdata
 ```
 
 `npm run db:setup` kör `db/schema.sql` och `db/seed.sql` och kan köras flera gånger. Använd
-`npm run db:setup -- --schema-only` för att bara uppdatera schemat utan att skriva över bilar och bud
-(utan flaggan skrivs demobilarna och deras bud över).
+`npm run db:setup -- --schema-only` för att bara uppdatera schemat. **Utan flaggan skrivs startdatan
+över:** demobilarna och deras bud, tjänsterna, vanliga frågor och omdömena från `seed.sql` – även
+ändringar som gjorts i admin.
 
 **Schemat uppdateras automatiskt vid varje production-deploy på Netlify** (`[context.production]` i
-`netlify.toml`) innan sajten byggs, så databasen ligger aldrig efter koden. Det kräver att
-`DATABASE_URL` är tillgänglig för *Builds* i Netlify (standard när variabeln har alla scopes);
-saknas den avbryts deployen och den gamla sajten ligger kvar. Migreringen körs som en transaktion med
-ett lås, så två deployer samtidigt krockar inte. Eftersom deploy previews delar production-databasen
-migrerar de inte – **ändringar i `db/schema.sql` måste därför vara bakåtkompatibla** (lägg till kolumner
-och tabeller med standardvärden, ta inte bort eller byt namn), så att både gammal och ny kod fungerar.
+`netlify.toml`) innan sajten byggs, så databasen ligger aldrig efter koden:
+
+- Det görs bara när `db/schema.sql` har ändrats (en hash sparas i tabellen `schema_migrations`), så
+  vanliga deployer rör inte databasen alls. `--force` kör schemat ändå.
+- Migreringen är en transaktion med lås: två deployer samtidigt väntar på varandra, `cars` låses före
+  `bids` (samma ordning som budgivningen) och den väntar högst 5 s på ett lås, annars försöker den igen.
+  Går något fel rullas allt tillbaka.
+- Det kräver att `DATABASE_URL` är tillgänglig för *Builds* i Netlify (standard när variabeln har alla
+  scopes). Saknas den, eller misslyckas migreringen, avbryts deployen och den gamla sajten ligger kvar.
+- Nödbroms utan kodändring: sätt `SKIP_DB_SETUP=1` i Netlify.
+- Deploy previews och `netlify build` på en egen dator migrerar inte, eftersom de delar
+  production-databasen. **Ändringar i `db/schema.sql` måste därför vara bakåtkompatibla** (lägg till
+  kolumner och tabeller med standardvärden, ta inte bort eller byt namn), så att både gammal och ny kod
+  fungerar mot samma databas.
 
 ### Databasen
 
 | Tabell | Innehåll |
 | --- | --- |
 | `services`, `cars`, `bids`, `reviews`, `faqs` | Publikt innehåll som visas på sajten |
-| `bookings` | Tidsbokningar (en bokning per datum + tid) |
+| `bookings` | Tidsbokningar (en aktiv – ej avbokad – bokning per datum + tid) |
 | `sell_requests` | "Sälj din bil till oss" |
 | `contact_messages` | Kontaktformuläret |
 | `images` | Metadata för bilbilder (filerna ligger i Netlify Blobs) |
 | `settings` | Webbplatsinställningar (kontaktuppgifter, öppettider, notisbanner) |
 | `admin_users` | Adminkonton utöver huvudkontot (lösenord som hash) |
+| `schema_migrations` | Vilka versioner av `db/schema.sql` som har körts |
 
 Bud läggs via SQL-funktionen `place_bid`, som kontrollerar minsta bud och att auktionen pågår, och
 förlänger auktionen 5 minuter om budet kommer inom de sista 5 minuterna. Bokningar skapas via
@@ -149,11 +159,13 @@ Man loggar in med **e-post och lösenord**.
 ## Publicera på Netlify (befintligt konto)
 
 1. Netlify → **Add new site → Import an existing project** → välj detta GitHub-repo.
-2. Bygginställningarna läses från `netlify.toml` (`npm run build`, publicerar `dist`, funktioner i `netlify/functions`).
+2. Bygginställningarna läses från `netlify.toml`: production kör `npm run db:setup -- --schema-only --deploy`
+   och sedan `npm run build`, deploy previews bara `npm run build`. Sajten publiceras från `dist`,
+   funktionerna ligger i `netlify/functions`.
 3. Under *Site configuration → Environment variables*: lägg till `DATABASE_URL` (Neons **pooled**
-   anslutningssträng, värdnamnet innehåller `-pooler`), `ADMIN_EMAIL`, `ADMIN_PASSWORD` och `ADMIN_SECRET`.
-   Kör `npm run db:setup -- --schema-only` mot databasen när schemat ändrats (t.ex. när admin
-   lades till) – det lägger till nya kolumner och tabeller utan att röra befintliga bilar och bud.
+   anslutningssträng, värdnamnet innehåller `-pooler`, med scope som inkluderar *Builds*),
+   `ADMIN_EMAIL`, `ADMIN_PASSWORD` och `ADMIN_SECRET`. Databasschemat uppdateras sedan automatiskt
+   vid varje production-deploy (se ovan).
 4. Deploya. Direktlänkar som `/auktion/volvo-v70-2014` fungerar tack vare SPA-omdirigeringen i `netlify.toml`.
 
 ## Struktur

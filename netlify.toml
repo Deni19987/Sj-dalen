@@ -3,11 +3,12 @@
   publish = "dist"
 
 # Production: uppdatera databasschemat (db/schema.sql) innan bygget, så att databasen aldrig ligger
-# efter koden. Schemat är bakåtkompatibelt och kan köras om, så en deploy som sedan misslyckas lämnar
-# den gamla sajten fungerande. DATABASE_URL måste vara tillgänglig för Builds i Netlify.
-# Deploy previews delar production-databasen och migrerar därför inte (ej mergad kod rör inte databasen).
+# efter koden. Görs bara när filen har ändrats. Schemat är bakåtkompatibelt och kan köras om, så en
+# deploy som sedan misslyckas lämnar den gamla sajten fungerande. DATABASE_URL måste vara tillgänglig
+# för Builds i Netlify. Nödbroms: sätt SKIP_DB_SETUP=1 i Netlify. Deploy previews och lokala
+# `netlify build` migrerar inte (ej mergad kod rör inte production-databasen).
 [context.production]
-  command = "npm run db:setup -- --schema-only && npm run build"
+  command = "npm run db:setup -- --schema-only --deploy && npm run build"
 
 [build.environment]
   NODE_VERSION = "22"
