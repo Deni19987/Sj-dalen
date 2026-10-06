@@ -142,6 +142,13 @@ export function createHandler(query: Query, options: HandlerOptions) {
     } catch (err) {
       if (err instanceof HttpError) return json({ error: err.message }, err.status);
       console.error(err);
+      // Saknad kolumn/tabell = databasen har inte uppdaterats till den här versionen av koden.
+      const code = (err as { code?: string })?.code;
+      if (code === "42703" || code === "42P01")
+        return json(
+          { error: "Databasen är inte uppdaterad för den här versionen av sajten. Kör npm run db:setup -- --schema-only." },
+          503,
+        );
       return json({ error: "Något gick fel. Försök igen om en stund." }, 500);
     }
   };

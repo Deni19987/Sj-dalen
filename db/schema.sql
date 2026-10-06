@@ -87,8 +87,6 @@ create table if not exists public.bookings (
   notes       text check (char_length(notes) <= 2000),
   created_at  timestamptz not null default now()
 );
--- En bokning per tid och dag (förhindrar dubbelbokning)
-create unique index if not exists bookings_slot_uidx on public.bookings(date, time);
 
 create table if not exists public.sell_requests (
   id           uuid primary key default gen_random_uuid(),
@@ -148,7 +146,8 @@ alter table public.contact_messages add constraint contact_messages_status_check
 alter table public.sell_requests drop constraint if exists sell_requests_status_check;
 alter table public.sell_requests add constraint sell_requests_status_check check (status in ('new','read','archived'));
 
--- Bokningar: status. Avbokade tider blir lediga igen.
+-- Bokningar: status. En aktiv bokning per tid och dag (förhindrar dubbelbokning);
+-- avbokade tider blir lediga igen. Det gamla indexet utan villkor tas bort på äldre databaser.
 alter table public.bookings add column if not exists status text not null default 'booked';
 alter table public.bookings add column if not exists note   text not null default '';
 alter table public.bookings drop constraint if exists bookings_status_check;

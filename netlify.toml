@@ -2,6 +2,13 @@
   command = "npm run build"
   publish = "dist"
 
+# Production: uppdatera databasschemat (db/schema.sql) innan bygget, så att databasen aldrig ligger
+# efter koden. Schemat är bakåtkompatibelt och kan köras om, så en deploy som sedan misslyckas lämnar
+# den gamla sajten fungerande. DATABASE_URL måste vara tillgänglig för Builds i Netlify.
+# Deploy previews delar production-databasen och migrerar därför inte (ej mergad kod rör inte databasen).
+[context.production]
+  command = "npm run db:setup -- --schema-only && npm run build"
+
 [build.environment]
   NODE_VERSION = "22"
 

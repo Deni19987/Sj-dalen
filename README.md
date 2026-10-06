@@ -61,7 +61,16 @@ npm run db:setup       # skapar tabeller + funktioner och lägger in startdata
 ```
 
 `npm run db:setup` kör `db/schema.sql` och `db/seed.sql` och kan köras flera gånger. Använd
-`npm run db:setup -- --schema-only` för att bara uppdatera schemat utan att skriva över bilar och bud.
+`npm run db:setup -- --schema-only` för att bara uppdatera schemat utan att skriva över bilar och bud
+(utan flaggan skrivs demobilarna och deras bud över).
+
+**Schemat uppdateras automatiskt vid varje production-deploy på Netlify** (`[context.production]` i
+`netlify.toml`) innan sajten byggs, så databasen ligger aldrig efter koden. Det kräver att
+`DATABASE_URL` är tillgänglig för *Builds* i Netlify (standard när variabeln har alla scopes);
+saknas den avbryts deployen och den gamla sajten ligger kvar. Migreringen körs som en transaktion med
+ett lås, så två deployer samtidigt krockar inte. Eftersom deploy previews delar production-databasen
+migrerar de inte – **ändringar i `db/schema.sql` måste därför vara bakåtkompatibla** (lägg till kolumner
+och tabeller med standardvärden, ta inte bort eller byt namn), så att både gammal och ny kod fungerar.
 
 ### Databasen
 
