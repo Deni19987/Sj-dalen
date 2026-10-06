@@ -2,6 +2,7 @@ import { seedCars, seedFaqs, seedReviews, seedServices } from "../data/seed";
 import { EXTEND_BY_MS, EXTEND_WINDOW_MS, minNextBid } from "./auction";
 import type {
   Bid,
+  BidInput,
   BidResult,
   Booking,
   BookingInput,
@@ -11,6 +12,7 @@ import type {
   Review,
   SellRequestInput,
   Service,
+  SiteSettings,
 } from "./types";
 
 /* ------------------------------------------------------------------ */
@@ -30,9 +32,16 @@ const toService = (r: Row): Service => ({
   popular: r.popular,
 });
 
-const toBid = (r: Row): Bid => ({ id: r.id, name: r.name, amount: r.amount, at: r.created_at });
+export const toBid = (r: Row): Bid => ({
+  id: r.id,
+  name: r.name,
+  amount: r.amount,
+  at: r.created_at,
+  email: r.email ?? undefined,
+  phone: r.phone ?? undefined,
+});
 
-const toCar = (r: Row): Car => ({
+export const toCar = (r: Row): Car => ({
   id: r.id,
   make: r.make,
   model: r.model,
@@ -56,8 +65,28 @@ const toCar = (r: Row): Car => ({
   status: r.status,
   soldPrice: r.sold_price ?? undefined,
   extended: r.extended,
+  images: r.images ?? [],
+  hasReserve: r.has_reserve ?? undefined,
+  reserveMet: r.reserve_met ?? undefined,
   bids: (r.bids ?? []).map(toBid),
 });
+
+export type ImageVariant = "main" | "thumb" | "source";
+
+/** Adress till en uppladdad bild. "thumb" (800×600) för kort, "main" (1600×1200) för bilsidan. */
+export const imageUrl = (id: string, variant: ImageVariant = "main") => `/api/images/${id}/${variant}`;
+
+export const DEFAULT_SETTINGS: SiteSettings = {
+  phone: "08-123 45 678",
+  email: "info@sjodalenbilar.se",
+  address: "Verkstadsvägen 4, Sjödalen",
+  hours: [
+    { label: "Mån–fre", value: "07.30–17.00" },
+    { label: "Lördag", value: "10.00–14.00" },
+    { label: "Söndag", value: "Stängt" },
+  ],
+  announcement: { enabled: false, text: "", link: "", tone: "info" },
+};
 
 const toReview = (r: Row): Review => ({
   id: r.id,
@@ -125,11 +154,18 @@ export async function fetchBookedSlots(date: string): Promise<string[]> {
   return request<string[]>(`/booked-slots?date=${encodeURIComponent(date)}`);
 }
 
-export async function placeBid(carId: string, name: string, amount: number): Promise<BidResult> {
-  if (!DEMO) return request<BidResult>("/bids", { method: "POST", body: { carId, name, amount } });
+export async function fetchSettings(): Promise<SiteSettings> {
+  if (DEMO) return DEFAULT_SETTINGS;
+  const data = await request<Partial<SiteSettings>>("/settings");
+  return { ...DEFAULT_SETTINGS, ...data, announcement: { ...DEFAULT_SETTINGS.announcement, ...data.announcement } };
+}
+
+export async function placeBid(input: BidInput): Promise<BidResult> {
+  if (!DEMO) return request<BidResult>("/bids", { method: "POST", body: input });
+  const { carId, name, amount } = input;
   const car = demo.cars.find((c) => c.id === carId);
   if (!car) return { ok: false, message: "Bilen hittades inte." };
-  if (car.status === "sold" || new Date(car.endsAt).getTime() <= Date.now())
+  if (car.status !== "active" || new Date(car.endsAt).getTime() <= Date.now())
     return { ok: false, message: "Auktionen är avslutad." };
   const min = minNextBid(car);
   if (amount < min)

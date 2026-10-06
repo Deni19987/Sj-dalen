@@ -18,6 +18,9 @@ export interface Bid {
   name: string;
   amount: number;
   at: string;
+  /** Bara i admin */
+  email?: string;
+  phone?: string;
 }
 
 export interface Car {
@@ -41,10 +44,30 @@ export interface Car {
   startPrice: number;
   minIncrement: number;
   endsAt: string;
-  status: "active" | "sold";
+  status: CarStatus;
   soldPrice?: number;
   extended?: boolean;
+  /** Bild-id:n i visningsordning (första = omslagsbild). Visas via imageUrl(). */
+  images: string[];
+  /** Om bilen har ett reservationspris och om det är uppnått (beloppet visas aldrig publikt). */
+  hasReserve?: boolean;
+  reserveMet?: boolean;
   bids: Bid[];
+}
+
+export type CarStatus = "draft" | "active" | "sold";
+
+export interface OpeningHours {
+  label: string;
+  value: string;
+}
+
+export interface SiteSettings {
+  phone: string;
+  email: string;
+  address: string;
+  hours: OpeningHours[];
+  announcement: { enabled: boolean; text: string; link: string; tone: "info" | "warning" };
 }
 
 export interface Review {
@@ -93,6 +116,14 @@ export interface ContactMessageInput {
   name: string;
   email: string;
   message: string;
+}
+
+export interface BidInput {
+  carId: string;
+  name: string;
+  amount: number;
+  email: string;
+  phone: string;
 }
 
 export interface BidResult {

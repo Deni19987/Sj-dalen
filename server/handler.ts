@@ -1,83 +1,41 @@
 // API för Sjödalen Bilar. Körs som Netlify Function (netlify/functions/api.mts)
 // och pratar med Neon Postgres. Webbläsaren når aldrig databasen direkt.
 
-/** Kör en parametriserad SQL-fråga och returnerar raderna. */
-export type Query = (text: string, params?: unknown[]) => Promise<Record<string, any>[]>;
+import { handleAdmin, serveImage } from "./admin";
+import type { AuthConfig } from "./auth";
+import {
+  body,
+  dbError,
+  email,
+  HttpError,
+  int,
+  isoDate,
+  json,
+  NO_CACHE,
+  SHORT_CACHE,
+  str,
+  type BlobStore,
+  type Query,
+} from "./http";
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+export type { BlobStore, Query } from "./http";
 
-class HttpError extends Error {
-  status: number;
-  constructor(status: number, message: string) {
-    super(message);
-    this.status = status;
-  }
+export interface HandlerOptions {
+  blobs: BlobStore;
+  auth: AuthConfig;
 }
 
-const json = (data: unknown, status = 200, headers: Record<string, string> = {}) =>
-  new Response(JSON.stringify(data), {
-    status,
-    headers: { "content-type": "application/json; charset=utf-8", ...headers },
-  });
-
-// Publikt innehåll får cachas kort i CDN:et; auktionsdata ska vara färsk.
-const SHORT_CACHE = { "cache-control": "public, max-age=0, s-maxage=60" };
-const NO_CACHE = { "cache-control": "no-store" };
-
-async function body(req: Request): Promise<Record<string, any>> {
-  try {
-    const data = await req.json();
-    if (data && typeof data === "object") return data;
-  } catch {
-    /* faller igenom */
-  }
-  throw new HttpError(400, "Ogiltig förfrågan.");
-}
-
-function str(v: unknown, field: string, { min = 1, max = 200, optional = false } = {}) {
-  if (v == null || v === "") {
-    if (optional) return null;
-    throw new HttpError(400, `Fältet ${field} saknas.`);
-  }
-  if (typeof v !== "string") throw new HttpError(400, `Ogiltigt värde för ${field}.`);
-  const s = v.trim();
-  if (s.length < min || s.length > max) throw new HttpError(400, `Ogiltigt värde för ${field}.`);
-  return s;
-}
-
-function int(v: unknown, field: string, min: number, max: number) {
-  const n = Number(v);
-  if (!Number.isInteger(n) || n < min || n > max) throw new HttpError(400, `Ogiltigt värde för ${field}.`);
-  return n;
-}
-
-function email(v: unknown) {
-  const s = str(v, "e-post", { max: 254 })!;
-  if (!EMAIL_RE.test(s)) throw new HttpError(400, "Ogiltig e-postadress.");
-  return s;
-}
-
-function isoDate(v: unknown) {
-  if (typeof v !== "string" || !DATE_RE.test(v)) throw new HttpError(400, "Ogiltigt datum.");
-  return v;
-}
-
-/** Skriver om Postgres-fel som funktionerna kastar (raise exception) till 400 med text. */
-function dbError(err: unknown): never {
-  const e = err as { code?: string; message?: string };
-  if (e?.code === "P0001" && e.message) throw new HttpError(400, e.message);
-  if (e?.code === "23514") throw new HttpError(400, "Ogiltiga uppgifter.");
-  throw err;
-}
-
-export function createHandler(query: Query) {
+export function createHandler(query: Query, options: HandlerOptions) {
   return async function handle(req: Request): Promise<Response> {
     const url = new URL(req.url);
     const path = url.pathname.replace(/^\/api/, "").replace(/\/+$/, "") || "/";
     const route = `${req.method} ${path}`;
 
     try {
+      if (path === "/admin" || path.startsWith("/admin/"))
+        return await handleAdmin(req, path, { query, blobs: options.blobs, auth: options.auth });
+      if (req.method === "GET" && path.startsWith("/images/")) return await serveImage(path, options.blobs);
+
       switch (route) {
         case "GET /services":
           return json(await query("select * from services order by sort_order"), 200, SHORT_CACHE);
@@ -88,16 +46,28 @@ export function createHandler(query: Query) {
         case "GET /faqs":
           return json(await query("select * from faqs order by sort_order"), 200, SHORT_CACHE);
 
+        case "GET /settings": {
+          const rows = await query("select value from settings where key = 'site'");
+          return json(rows[0]?.value ?? {}, 200, SHORT_CACHE);
+        }
+
         case "GET /cars":
           return json(
             await query(`
-              select c.*,
+              select c.id, c.make, c.model, c.year, c.title, c.highlight, c.body_type, c.color_name, c.color_hex,
+                c.mileage_km, c.fuel, c.gearbox, c.inspected, c.condition_summary, c.highlights, c.things_to_note,
+                c.description, c.start_price, c.min_increment, c.ends_at, c.status, c.sold_price, c.extended,
+                c.images, c.created_at,
+                (c.reserve_price is null or coalesce((select max(amount) from bids b where b.car_id = c.id), 0) >= c.reserve_price)
+                  as reserve_met,
+                (c.reserve_price is not null) as has_reserve,
                 coalesce(
                   (select json_agg(json_build_object('id', b.id, 'name', b.name, 'amount', b.amount, 'created_at', b.created_at)
                            order by b.created_at)
                      from bids b where b.car_id = c.id),
                   '[]'::json) as bids
               from cars c
+              where c.status <> 'draft'
               order by c.ends_at`),
             200,
             NO_CACHE,
@@ -111,10 +81,12 @@ export function createHandler(query: Query) {
 
         case "POST /bids": {
           const b = await body(req);
-          const rows = await query("select place_bid($1, $2, $3) as result", [
+          const rows = await query("select place_bid($1, $2, $3, $4, $5) as result", [
             str(b.carId, "bil", { max: 100 }),
             str(b.name, "namn", { max: 80 }),
             int(b.amount, "belopp", 1, 100_000_000),
+            email(b.email),
+            str(b.phone, "telefon", { min: 6, max: 40 }),
           ]);
           return json(rows[0].result);
         }

@@ -8,6 +8,8 @@ import {
   fetchFaqs,
   fetchReviews,
   fetchServices,
+  fetchSettings,
+  DEFAULT_SETTINGS,
   placeBid,
 } from "./api";
 
@@ -16,6 +18,7 @@ export const queryKeys = {
   cars: ["cars"] as const,
   reviews: ["reviews"] as const,
   faqs: ["faqs"] as const,
+  settings: ["settings"] as const,
   bookedSlots: (date: string) => ["booked-slots", date] as const,
 };
 
@@ -32,6 +35,15 @@ export const useReviews = () =>
 export const useFaqs = () =>
   useQuery({ queryKey: queryKeys.faqs, queryFn: fetchFaqs, staleTime: 10 * 60_000 });
 
+/** Kontaktuppgifter, öppettider och notisbanner (redigeras i admin). */
+export const useSettings = () =>
+  useQuery({
+    queryKey: queryKeys.settings,
+    queryFn: fetchSettings,
+    staleTime: 5 * 60_000,
+    placeholderData: DEFAULT_SETTINGS,
+  });
+
 export const useBookedSlots = (date: string | null) =>
   useQuery({
     queryKey: queryKeys.bookedSlots(date ?? ""),
@@ -42,8 +54,7 @@ export const useBookedSlots = (date: string | null) =>
 export function usePlaceBid() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v: { carId: string; name: string; amount: number }) =>
-      placeBid(v.carId, v.name, v.amount),
+    mutationFn: placeBid,
     onSettled: () => qc.invalidateQueries({ queryKey: queryKeys.cars }),
   });
 }

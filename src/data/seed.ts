@@ -153,6 +153,7 @@ export const seedCars: Car[] = [
     minIncrement: 1_000,
     endsAt: fromNow(3 * DAY + 4 * HOUR),
     status: "active",
+    images: [],
     bids: [
       { id: "b1", name: "Anders K.", amount: 47_000, at: ago(2 * DAY) },
       { id: "b2", name: "Malin S.", amount: 49500, at: ago(1 * DAY + 3 * HOUR) },
@@ -186,6 +187,7 @@ export const seedCars: Car[] = [
     minIncrement: 1_000,
     endsAt: fromNow(1 * DAY + 9 * HOUR),
     status: "active",
+    images: [],
     bids: [
       { id: "b1", name: "Frida N.", amount: 69500, at: ago(20 * HOUR) },
       { id: "b2", name: "Peter H.", amount: 71_000, at: ago(6 * HOUR) },
@@ -217,6 +219,7 @@ export const seedCars: Car[] = [
     minIncrement: 1_000,
     endsAt: fromNow(5 * DAY),
     status: "active",
+    images: [],
     bids: [{ id: "b1", name: "Camilla B.", amount: 73500, at: ago(1 * DAY) }],
   },
   {
@@ -249,6 +252,7 @@ export const seedCars: Car[] = [
     minIncrement: 500,
     endsAt: fromNow(6 * HOUR),
     status: "active",
+    images: [],
     bids: [
       { id: "b1", name: "Oskar T.", amount: 35_000, at: ago(3 * DAY) },
       { id: "b2", name: "Elin R.", amount: 36500, at: ago(1 * DAY + 8 * HOUR) },
@@ -282,6 +286,7 @@ export const seedCars: Car[] = [
     minIncrement: 1_000,
     endsAt: fromNow(2 * DAY + 14 * HOUR),
     status: "active",
+    images: [],
     bids: [],
   },
   {
@@ -313,6 +318,7 @@ export const seedCars: Car[] = [
     minIncrement: 2_000,
     endsAt: fromNow(4 * DAY + 2 * HOUR),
     status: "active",
+    images: [],
     bids: [
       { id: "b1", name: "Sara V.", amount: 114_000, at: ago(2 * DAY) },
       { id: "b2", name: "Mikael J.", amount: 118_000, at: ago(10 * HOUR) },
@@ -341,6 +347,7 @@ export const seedCars: Car[] = [
     minIncrement: 1_000,
     endsAt: ago(9 * DAY),
     status: "sold",
+    images: [],
     soldPrice: 96_000,
     bids: [
       { id: "b1", name: "Fredrik A.", amount: 91_000, at: ago(12 * DAY) },
@@ -372,6 +379,7 @@ export const seedCars: Car[] = [
     minIncrement: 1_000,
     endsAt: ago(23 * DAY),
     status: "sold",
+    images: [],
     soldPrice: 61_000,
     bids: [
       { id: "b1", name: "Jonas W.", amount: 59_000, at: ago(25 * DAY) },
