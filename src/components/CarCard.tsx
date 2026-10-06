@@ -6,7 +6,7 @@ import { formatKm, formatPrice } from "../lib/format";
 import type { Car } from "../lib/types";
 import { useWatch } from "../lib/watchlist";
 import { Badge } from "./Badge";
-import { CarIllustration } from "./CarIllustration";
+import { CarCover } from "./CarGallery";
 import { Countdown } from "./Countdown";
 
 export function CarCard({ car }: { car: Car }) {
@@ -30,9 +30,7 @@ export function CarCard({ car }: { car: Car }) {
       </button>
 
       <Link to="/auktion/$id" params={{ id: car.id }} className="block">
-        <div className="bg-graphite-100 px-6 pt-6">
-          <CarIllustration colorHex={car.colorHex} bodyType={car.bodyType} className="mx-auto h-32 w-full" />
-        </div>
+        <CarCover car={car} />
         <div className="flex flex-1 flex-col gap-3 p-5">
           <div className="flex items-start justify-between gap-2">
             <h3 className="font-display text-lg font-bold leading-tight text-graphite-900">{car.title}</h3>

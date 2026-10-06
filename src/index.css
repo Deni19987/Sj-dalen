@@ -8,6 +8,11 @@
   }
 }
 
+/* Admin: inga upp/ned-pilar i nummerfält */
+.font-apple input[type="number"]::-webkit-inner-spin-button,
+.font-apple input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.font-apple input[type="number"] { -moz-appearance: textfield; }
+
 /* CarFlow-sektionen (visas mellan <main> och <footer> på Hem och Tjänster) */
 .cf-promo{background:#14202e;color:#fff;padding:3.5rem 1.5rem;margin:0}
 .cf-promo-inner{max-width:72rem;margin:0 auto;display:flex;gap:3rem;align-items:center;flex-wrap:wrap}

@@ -19,5 +19,5 @@ export function bidsNewestFirst(car: Car) {
 }
 
 export function isEnded(car: Car, now: number) {
-  return car.status === "sold" || new Date(car.endsAt).getTime() <= now;
+  return car.status !== "active" || new Date(car.endsAt).getTime() <= now;
 }

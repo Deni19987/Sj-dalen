@@ -3,8 +3,10 @@ import { Button } from "../components/Button";
 import { CarIllustration } from "../components/CarIllustration";
 import { PageHero } from "../components/PageHero";
 import { SectionTitle } from "../components/SectionTitle";
+import { useSettings } from "../lib/queries";
 
 export function AboutPage() {
+  const { data: settings } = useSettings();
   return (
     <div>
       <PageHero
@@ -69,10 +71,14 @@ export function AboutPage() {
             <h2 className="font-display text-xl font-extrabold uppercase tracking-tight text-white">Hitta hit</h2>
             <ul className="mt-5 space-y-3 text-graphite-300">
               <li className="flex items-center gap-2">
-                <MapPin size={18} className="text-blue-500" /> Verkstadsvägen 4, Sjödalen
+                <MapPin size={18} className="text-blue-500" /> {settings?.address}
               </li>
               <li className="flex items-center gap-2">
-                <Clock size={18} className="text-blue-500" /> Mån–fre 07.30–17.00, lör 10.00–14.00
+                <Clock size={18} className="shrink-0 text-blue-500" />
+                {settings?.hours
+                  .filter((h) => !/stängt/i.test(h.value))
+                  .map((h) => `${h.label} ${h.value}`)
+                  .join(", ")}
               </li>
             </ul>
             <Button

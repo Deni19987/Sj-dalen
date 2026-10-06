@@ -39,7 +39,7 @@ create table if not exists public.cars (
   start_price        integer not null check (start_price >= 0),
   min_increment      integer not null check (min_increment > 0),
   ends_at            timestamptz not null,
-  status             text not null default 'active' check (status in ('active','sold')),
+  status             text not null default 'active',
   sold_price         integer,
   extended           boolean not null default false,
   created_at         timestamptz not null default now()
@@ -112,11 +112,66 @@ create table if not exists public.contact_messages (
 );
 
 -- =====================================================================
+-- Admin: bilder, inställningar och statusfält (kan köras om på befintlig databas)
+-- =====================================================================
+
+-- Bilar: utkast (syns inte publikt), bilder och reservationspris
+alter table public.cars drop constraint if exists cars_status_check;
+alter table public.cars add constraint cars_status_check check (status in ('draft','active','sold'));
+alter table public.cars add column if not exists images        text[] not null default '{}';
+alter table public.cars add column if not exists reserve_price integer check (reserve_price >= 0);
+alter table public.cars add column if not exists admin_note    text not null default '';
+alter table public.cars add column if not exists updated_at    timestamptz not null default now();
+alter table public.cars add column if not exists sold_at       timestamptz;
+
+-- Budgivarens kontaktuppgifter (visas bara i admin)
+alter table public.bids add column if not exists email text;
+alter table public.bids add column if not exists phone text;
+
+-- Bilder: själva filerna ligger i Netlify Blobs, här finns metadata
+create table if not exists public.images (
+  id          text primary key,
+  width       integer not null,
+  height      integer not null,
+  bytes       integer not null default 0,
+  crop        jsonb,
+  created_at  timestamptz not null default now()
+);
+
+-- Inkorg: status och anteckning på meddelanden och säljförfrågningar
+alter table public.contact_messages add column if not exists status text not null default 'new';
+alter table public.contact_messages add column if not exists note   text not null default '';
+alter table public.sell_requests    add column if not exists status text not null default 'new';
+alter table public.sell_requests    add column if not exists note   text not null default '';
+alter table public.contact_messages drop constraint if exists contact_messages_status_check;
+alter table public.contact_messages add constraint contact_messages_status_check check (status in ('new','read','archived'));
+alter table public.sell_requests drop constraint if exists sell_requests_status_check;
+alter table public.sell_requests add constraint sell_requests_status_check check (status in ('new','read','archived'));
+
+-- Bokningar: status. Avbokade tider blir lediga igen.
+alter table public.bookings add column if not exists status text not null default 'booked';
+alter table public.bookings add column if not exists note   text not null default '';
+alter table public.bookings drop constraint if exists bookings_status_check;
+alter table public.bookings add constraint bookings_status_check check (status in ('booked','done','cancelled','no_show'));
+drop index if exists public.bookings_slot_uidx;
+create unique index if not exists bookings_slot_active_uidx on public.bookings(date, time) where status <> 'cancelled';
+
+-- Webbplatsinställningar (kontaktuppgifter, öppettider, notisbanner …)
+create table if not exists public.settings (
+  key         text primary key,
+  value       jsonb not null,
+  updated_at  timestamptz not null default now()
+);
+
+-- =====================================================================
 -- Funktioner (anropas från API:t i netlify/functions)
 -- =====================================================================
 
 -- Lägg bud: validerar minsta bud och förlänger auktionen 5 min vid sena bud.
-create or replace function public.place_bid(p_car_id text, p_name text, p_amount integer)
+drop function if exists public.place_bid(text, text, integer);
+create or replace function public.place_bid(
+  p_car_id text, p_name text, p_amount integer, p_email text default null, p_phone text default null
+)
 returns json
 language plpgsql
 as $$
@@ -135,7 +190,7 @@ begin
     return json_build_object('ok', false, 'message', 'Bilen hittades inte.');
   end if;
 
-  if v_car.status = 'sold' or v_car.ends_at <= now() then
+  if v_car.status <> 'active' or v_car.ends_at <= now() then
     return json_build_object('ok', false, 'message', 'Auktionen är avslutad.');
   end if;
 
@@ -149,7 +204,9 @@ begin
     );
   end if;
 
-  insert into public.bids (car_id, name, amount) values (p_car_id, left(btrim(p_name), 80), p_amount);
+  insert into public.bids (car_id, name, amount, email, phone)
+  values (p_car_id, left(btrim(p_name), 80), p_amount,
+          nullif(left(btrim(p_email), 254), ''), nullif(left(btrim(p_phone), 40), ''));
 
   v_extend := v_car.ends_at - now() <= interval '5 minutes';
   if v_extend then
@@ -204,5 +261,5 @@ returns table (slot text)
 language sql
 stable
 as $$
-  select b.time as slot from public.bookings b where b.date = p_date;
+  select b.time as slot from public.bookings b where b.date = p_date and b.status <> 'cancelled';
 $$;

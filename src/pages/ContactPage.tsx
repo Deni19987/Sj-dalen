@@ -2,7 +2,8 @@ import { useState, type FormEvent } from "react";
 import { CircleCheck, Clock, Mail, MapPin, Phone } from "lucide-react";
 import { Button } from "../components/Button";
 import { PageHero } from "../components/PageHero";
-import { useCreateContactMessage } from "../lib/queries";
+import { telHref } from "../lib/format";
+import { useCreateContactMessage, useSettings } from "../lib/queries";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const INPUT =
@@ -13,6 +14,7 @@ export function ContactPage() {
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
   const send = useCreateContactMessage();
+  const { data: settings } = useSettings();
   const valid = name.trim().length > 1 && EMAIL_RE.test(email) && message.trim().length > 3;
 
   function onSubmit(e: FormEvent) {
@@ -31,15 +33,15 @@ export function ContactPage() {
               <MapPin size={20} className="mt-0.5 shrink-0 text-blue-500" />
               <div>
                 <p className="font-semibold text-graphite-900">Besöksadress</p>
-                <p className="text-graphite-600">Verkstadsvägen 4, Sjödalen</p>
+                <p className="text-graphite-600">{settings?.address}</p>
               </div>
             </div>
             <div className="flex items-start gap-3">
               <Phone size={20} className="mt-0.5 shrink-0 text-blue-500" />
               <div>
                 <p className="font-semibold text-graphite-900">Telefon</p>
-                <a href="tel:+46812345678" className="text-graphite-600 hover:text-blue-600">
-                  08-123 45 678
+                <a href={telHref(settings?.phone ?? "")} className="text-graphite-600 hover:text-blue-600">
+                  {settings?.phone}
                 </a>
               </div>
             </div>
@@ -47,8 +49,8 @@ export function ContactPage() {
               <Mail size={20} className="mt-0.5 shrink-0 text-blue-500" />
               <div>
                 <p className="font-semibold text-graphite-900">E-post</p>
-                <a href="mailto:info@sjodalenbilar.se" className="text-graphite-600 hover:text-blue-600">
-                  info@sjodalenbilar.se
+                <a href={`mailto:${settings?.email}`} className="text-graphite-600 hover:text-blue-600">
+                  {settings?.email}
                 </a>
               </div>
             </div>
@@ -56,8 +58,11 @@ export function ContactPage() {
               <Clock size={20} className="mt-0.5 shrink-0 text-blue-500" />
               <div>
                 <p className="font-semibold text-graphite-900">Öppettider</p>
-                <p className="text-graphite-600">Mån–fre 07.30–17.00</p>
-                <p className="text-graphite-600">Lördag 10.00–14.00</p>
+                {settings?.hours.map((h, i) => (
+                  <p key={i} className="text-graphite-600">
+                    {h.label} {h.value}
+                  </p>
+                ))}
               </div>
             </div>
           </div>

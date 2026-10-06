@@ -1,4 +1,4 @@
-import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
+import { createRootRoute, createRoute, createRouter, lazyRouteComponent } from "@tanstack/react-router";
 import { Layout } from "./components/Layout";
 import { AboutPage } from "./pages/AboutPage";
 import { AuctionPage } from "./pages/AuctionPage";
@@ -35,6 +35,28 @@ const bookingRoute = createRoute({
     typeof search.service === "string" ? { service: search.service } : {},
 });
 
+// Admin laddas separat (egen JS-fil) så att den publika sajten inte blir tyngre.
+const adminRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin",
+  component: lazyRouteComponent(() => import("./admin/AdminLayout"), "AdminLayout"),
+});
+const adminPage = <P extends string>(path: P, name: keyof typeof import("./admin/pages")) =>
+  createRoute({
+    getParentRoute: () => adminRoute,
+    path,
+    component: lazyRouteComponent(() => import("./admin/pages"), name),
+  });
+const adminOverviewRoute = adminPage("/", "OverviewPage");
+const adminCarsRoute = adminPage("/bilar", "CarsPage");
+const adminCarNewRoute = adminPage("/bilar/ny", "CarEditorPage");
+const adminCarEditRoute = adminPage("/bilar/$id", "CarEditorPage");
+const adminBidsRoute = adminPage("/bud", "BidsPage");
+const adminInboxRoute = adminPage("/inkorg", "InboxPage");
+const adminBookingsRoute = adminPage("/bokningar", "BookingsPage");
+const adminContentRoute = adminPage("/innehall", "ContentPage");
+const adminSettingsRoute = adminPage("/installningar", "SettingsPage");
+
 const routeTree = rootRoute.addChildren([
   homeRoute,
   servicesRoute,
@@ -46,6 +68,17 @@ const routeTree = rootRoute.addChildren([
   sellRoute,
   soldRoute,
   carRoute,
+  adminRoute.addChildren([
+    adminOverviewRoute,
+    adminCarsRoute,
+    adminCarNewRoute,
+    adminCarEditRoute,
+    adminBidsRoute,
+    adminInboxRoute,
+    adminBookingsRoute,
+    adminContentRoute,
+    adminSettingsRoute,
+  ]),
 ]);
 
 export const router = createRouter({ routeTree, defaultPreload: "intent" });

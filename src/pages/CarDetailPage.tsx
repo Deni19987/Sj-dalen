@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { getRouteApi, Link } from "@tanstack/react-router";
 import {
   Calendar,
@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { Badge } from "../components/Badge";
 import { Button } from "../components/Button";
-import { CarIllustration } from "../components/CarIllustration";
+import { CarGallery } from "../components/CarGallery";
 import { Countdown } from "../components/Countdown";
 import { bidsNewestFirst, currentPrice, isEnded, minNextBid } from "../lib/auction";
 import { cn } from "../lib/cn";
@@ -25,28 +25,59 @@ import type { BidResult, Car } from "../lib/types";
 import { useWatch } from "../lib/watchlist";
 
 const route = getRouteApi("/auktion/$id");
-const INPUT = "rounded-lg border border-graphite-200 px-3 py-2.5 outline-none focus:border-blue-500";
+const INPUT = "w-full rounded-lg border border-graphite-200 px-3 py-2.5 outline-none focus:border-blue-500";
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Budgivarens uppgifter sparas i webbläsaren så att man slipper fylla i dem vid nästa bud.
+const BIDDER_KEY = "sjodalen-bilar-bidder";
+
+function readBidder(): { name: string; email: string; phone: string } {
+  try {
+    return { name: "", email: "", phone: "", ...JSON.parse(localStorage.getItem(BIDDER_KEY) ?? "{}") };
+  } catch {
+    return { name: "", email: "", phone: "" };
+  }
+}
 
 function BidForm({ car }: { car: Car }) {
   const placeBid = usePlaceBid();
   const min = minNextBid(car);
-  const [name, setName] = useState("");
+  const [bidder, setBidder] = useState(readBidder);
   const [amount, setAmount] = useState(String(min));
   const [result, setResult] = useState<BidResult | null>(null);
 
+  // Om någon annan bjuder över medan sidan är öppen: höj förslaget till nytt minsta bud.
+  useEffect(() => {
+    setAmount((a) => (Number(a) < min ? String(min) : a));
+  }, [min]);
+
   if (isEnded(car, Date.now())) return null;
+
+  const update = (field: keyof typeof bidder) => (e: { target: { value: string } }) =>
+    setBidder((b) => ({ ...b, [field]: e.target.value }));
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     const value = Number(amount);
-    if (!name.trim()) return setResult({ ok: false, message: "Ange ditt namn." });
+    const name = bidder.name.trim();
+    const email = bidder.email.trim();
+    const phone = bidder.phone.trim();
+    if (!name) return setResult({ ok: false, message: "Ange ditt namn." });
+    if (!EMAIL_RE.test(email)) return setResult({ ok: false, message: "Ange en giltig e-postadress." });
+    if (phone.replace(/\D/g, "").length < 6) return setResult({ ok: false, message: "Ange ditt telefonnummer." });
     if (!Number.isFinite(value)) return setResult({ ok: false, message: "Ange ett giltigt belopp." });
     placeBid.mutate(
-      { carId: car.id, name: name.trim(), amount: value },
+      { carId: car.id, name, email, phone, amount: value },
       {
         onSuccess: (r) => {
           setResult(r);
-          if (r.ok) setAmount(String(value + car.minIncrement));
+          if (r.ok) {
+            setAmount(String(value + car.minIncrement));
+            try {
+              localStorage.setItem(BIDDER_KEY, JSON.stringify({ name, email, phone }));
+            } catch {
+              /* ignorera t.ex. privat läge */
+            }
+          }
         },
         onError: (err) => setResult({ ok: false, message: err.message }),
       },
@@ -58,24 +89,46 @@ function BidForm({ car }: { car: Car }) {
       <p className="mb-3 text-sm text-graphite-500">
         Minsta nästa bud: <span className="font-bold text-graphite-900">{formatPrice(min)}</span>
       </p>
-      <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <input value={bidder.name} onChange={update("name")} placeholder="Namn" autoComplete="name" className={INPUT} />
         <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Ditt namn"
-          className={cn(INPUT, "sm:col-span-1")}
+          type="email"
+          value={bidder.email}
+          onChange={update("email")}
+          placeholder="E-post"
+          autoComplete="email"
+          className={INPUT}
         />
         <input
-          type="number"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          min={min}
-          className={cn("w-32", INPUT)}
+          type="tel"
+          value={bidder.phone}
+          onChange={update("phone")}
+          placeholder="Telefon"
+          autoComplete="tel"
+          className={INPUT}
         />
+      </div>
+      <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto]">
+        <div className="relative">
+          <input
+            type="number"
+            inputMode="numeric"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            min={min}
+            step={car.minIncrement}
+            aria-label="Ditt bud i kronor"
+            className={cn(INPUT, "pr-10 font-semibold")}
+          />
+          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-graphite-400">kr</span>
+        </div>
         <Button type="submit" disabled={placeBid.isPending}>
           <Gavel size={16} /> Lägg bud
         </Button>
       </div>
+      <p className="mt-2 text-xs text-graphite-400">
+        Bara ditt namn visas i budhistoriken. E-post och telefon använder vi för att kontakta dig om du vinner.
+      </p>
       {result && (
         <p className={`mt-3 text-sm font-semibold ${result.ok ? "text-blue-600" : "text-red-600"}`}>
           {result.message}
@@ -151,14 +204,16 @@ export function CarDetailPage() {
 
       <div className="mt-4 grid gap-10 lg:grid-cols-2">
         <div>
-          <div className="relative rounded-3xl bg-graphite-100 p-10">
-            <CarIllustration colorHex={car.colorHex} bodyType={car.bodyType} className="w-full" />
-            {car.status === "sold" && (
-              <span className="absolute left-6 top-6 rounded-full bg-graphite-900 px-4 py-1.5 text-sm font-bold uppercase tracking-wide text-white">
-                Såld
-              </span>
-            )}
-          </div>
+          <CarGallery
+            car={car}
+            badge={
+              car.status === "sold" && (
+                <span className="absolute left-6 top-6 rounded-full bg-graphite-900 px-4 py-1.5 text-sm font-bold uppercase tracking-wide text-white">
+                  Såld
+                </span>
+              )
+            }
+          />
           <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
             {specs.map((s) => (
               <div key={s.label} className="rounded-xl bg-white p-4 shadow-card">
@@ -200,6 +255,16 @@ export function CarDetailPage() {
                 </p>
                 <p className="font-display text-3xl font-extrabold text-graphite-900">{formatPrice(price)}</p>
                 <p className="text-xs text-graphite-400">Utropspris {formatPrice(car.startPrice)}</p>
+                {car.status !== "sold" && car.hasReserve && (
+                  <p
+                    className={cn(
+                      "mt-2 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold",
+                      car.reserveMet ? "bg-blue-50 text-blue-700" : "bg-graphite-100 text-graphite-500",
+                    )}
+                  >
+                    {car.reserveMet ? "Reservationspriset är uppnått" : "Reservationspriset är inte uppnått"}
+                  </p>
+                )}
               </div>
               {!ended && (
                 <div className="text-right">
@@ -228,7 +293,9 @@ export function CarDetailPage() {
               <ShieldCheck size={18} className="text-blue-500" /> Skick &amp; kontrollerat av oss
             </h2>
             <p className="mt-1 text-sm text-graphite-500">{car.conditionSummary}</p>
-            <h3 className="mt-5 text-xs font-bold uppercase tracking-wide text-graphite-400">Höjdpunkter</h3>
+            {car.highlights.length > 0 && (
+              <h3 className="mt-5 text-xs font-bold uppercase tracking-wide text-graphite-400">Höjdpunkter</h3>
+            )}
             <ul className="mt-2 space-y-2">
               {car.highlights.map((h) => (
                 <li key={h} className="flex items-start gap-2 text-sm text-graphite-700">

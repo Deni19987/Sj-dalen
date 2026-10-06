@@ -45,3 +45,9 @@ export function timeLeft(endsAt: string, now: number) {
     ended: false,
   };
 }
+
+/** "08-123 45 678" → "tel:+46812345678" */
+export function telHref(phone: string) {
+  const digits = phone.replace(/[^\d+]/g, "");
+  return `tel:${digits.startsWith("0") ? `+46${digits.slice(1)}` : digits}`;
+}
