@@ -5,15 +5,18 @@
 import { readFileSync } from "node:fs";
 import { Pool } from "@neondatabase/serverless";
 
-try {
-  process.loadEnvFile?.(".env");
-} catch {
-  /* ingen .env – använd miljövariabler */
+// `neon link`/`neon env pull` skriver .env.local; .env stöds också.
+for (const file of [".env.local", ".env"]) {
+  try {
+    process.loadEnvFile(file);
+  } catch {
+    /* filen saknas – använd miljövariabler */
+  }
 }
 
 const url = process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL;
 if (!url) {
-  console.error("Saknar DATABASE_URL. Kör `neon env pull` eller lägg in den i .env.");
+  console.error("Saknar DATABASE_URL. Kör `neon env pull` eller lägg in den i .env.local.");
   process.exit(1);
 }
 
