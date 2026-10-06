@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createBooking,
@@ -11,7 +10,6 @@ import {
   fetchServices,
   placeBid,
 } from "./api";
-import { supabase } from "./supabase";
 
 export const queryKeys = {
   services: ["services"] as const,
@@ -24,7 +22,9 @@ export const queryKeys = {
 export const useServices = () =>
   useQuery({ queryKey: queryKeys.services, queryFn: fetchServices, staleTime: 10 * 60_000 });
 
-export const useCars = () => useQuery({ queryKey: queryKeys.cars, queryFn: fetchCars });
+/** `live` hämtar om var 10:e sekund så att nya bud och förlängningar syns direkt. */
+export const useCars = ({ live = false } = {}) =>
+  useQuery({ queryKey: queryKeys.cars, queryFn: fetchCars, refetchInterval: live ? 10_000 : false });
 
 export const useReviews = () =>
   useQuery({ queryKey: queryKeys.reviews, queryFn: fetchReviews, staleTime: 10 * 60_000 });
@@ -59,24 +59,3 @@ export function useCreateBooking() {
 export const useCreateSellRequest = () => useMutation({ mutationFn: createSellRequest });
 
 export const useCreateContactMessage = () => useMutation({ mutationFn: createContactMessage });
-
-/** Live-uppdatera auktionen när någon annan lägger bud (Supabase Realtime). */
-export function useAuctionRealtime() {
-  const qc = useQueryClient();
-  useEffect(() => {
-    if (!supabase) return;
-    const client = supabase;
-    const channel = client
-      .channel("auction")
-      .on("postgres_changes", { event: "*", schema: "public", table: "bids" }, () =>
-        qc.invalidateQueries({ queryKey: queryKeys.cars }),
-      )
-      .on("postgres_changes", { event: "*", schema: "public", table: "cars" }, () =>
-        qc.invalidateQueries({ queryKey: queryKeys.cars }),
-      )
-      .subscribe();
-    return () => {
-      client.removeChannel(channel);
-    };
-  }, [qc]);
-}

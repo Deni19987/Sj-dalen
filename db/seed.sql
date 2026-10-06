@@ -1,5 +1,5 @@
 -- Startdata för Sjödalen Bilar (samma innehåll som demoläget i src/data/seed.ts).
--- Kör efter migrationen. Tider sätts relativt "nu" så att auktionerna är aktiva.
+-- Körs efter schema.sql (npm run db:setup). Tider sätts relativt "nu" så att auktionerna är aktiva.
 -- Kan köras om: befintliga rader med samma id skrivs över.
 
 begin;

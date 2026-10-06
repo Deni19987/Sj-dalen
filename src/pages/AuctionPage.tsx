@@ -4,7 +4,7 @@ import { Archive, ArrowRight, MapPin } from "lucide-react";
 import { CarCard } from "../components/CarCard";
 import { PageHero } from "../components/PageHero";
 import { currentPrice } from "../lib/auction";
-import { useAuctionRealtime, useCars } from "../lib/queries";
+import { useCars } from "../lib/queries";
 
 const BODY_FILTERS = [
   { value: "alla", label: "Alla karosser" },
@@ -19,8 +19,7 @@ const SELECT =
   "rounded-full border border-graphite-200 bg-white px-4 py-2 text-sm font-semibold text-graphite-700 outline-none focus:border-blue-500";
 
 export function AuctionPage() {
-  const { data: cars = [] } = useCars();
-  useAuctionRealtime();
+  const { data: cars = [] } = useCars({ live: true });
   const [body, setBody] = useState("alla");
   const [sort, setSort] = useState("slutar-snart");
 

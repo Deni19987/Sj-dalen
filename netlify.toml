@@ -5,7 +5,17 @@
 [build.environment]
   NODE_VERSION = "22"
 
-# SPA-fallback: låt TanStack Router hantera alla sökvägar (t.ex. /auktion/volvo-v70-2014)
+[functions]
+  node_bundler = "esbuild"
+
+# Lokal utveckling med API: `npm run dev:full` (netlify dev) startar Vite + funktionerna
+[dev]
+  command = "npm run dev"
+  targetPort = 5173
+  framework = "#custom"
+
+# SPA-fallback: låt TanStack Router hantera alla sökvägar (t.ex. /auktion/volvo-v70-2014).
+# /api/* fångas av funktionen netlify/functions/api.mts innan denna regel.
 [[redirects]]
   from = "/*"
   to = "/index.html"

@@ -1,6 +1,5 @@
 import { seedCars, seedFaqs, seedReviews, seedServices } from "../data/seed";
 import { EXTEND_BY_MS, EXTEND_WINDOW_MS, minNextBid } from "./auction";
-import { supabase } from "./supabase";
 import type {
   Bid,
   BidResult,
@@ -70,13 +69,22 @@ const toReview = (r: Row): Review => ({
 
 const toFaq = (r: Row): Faq => ({ id: r.id, question: r.question, answer: r.answer });
 
-function unwrap<T>({ data, error }: { data: T | null; error: { message: string } | null }): T {
-  if (error) throw new Error(error.message);
+/** Demoläge: kör helt utan databas (VITE_DEMO_DATA=true), all data hålls i minnet. */
+export const DEMO = import.meta.env.VITE_DEMO_DATA === "true";
+
+async function request<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
+  const res = await fetch(`/api${path}`, {
+    method: init?.method ?? "GET",
+    headers: init?.body ? { "content-type": "application/json" } : undefined,
+    body: init?.body ? JSON.stringify(init.body) : undefined,
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(data?.error ?? "Något gick fel. Försök igen om en stund.");
   return data as T;
 }
 
 /* ------------------------------------------------------------------ */
-/* Demoläge: data i minnet när Supabase inte är konfigurerat            */
+/* Demoläge: data i minnet                                              */
 /* ------------------------------------------------------------------ */
 
 const demo = {
@@ -92,42 +100,33 @@ const demoId = (prefix: string) =>
 /* ------------------------------------------------------------------ */
 
 export async function fetchServices(): Promise<Service[]> {
-  if (!supabase) return seedServices;
-  const rows = unwrap(await supabase.from("services").select("*").order("sort_order"));
-  return rows.map(toService);
+  if (DEMO) return seedServices;
+  return (await request<Row[]>("/services")).map(toService);
 }
 
 export async function fetchCars(): Promise<Car[]> {
-  if (!supabase) return structuredClone(demo.cars);
-  const rows = unwrap(await supabase.from("cars").select("*, bids(*)").order("ends_at"));
-  return rows.map(toCar);
+  if (DEMO) return structuredClone(demo.cars);
+  return (await request<Row[]>("/cars")).map(toCar);
 }
 
 export async function fetchReviews(): Promise<Review[]> {
-  if (!supabase) return seedReviews;
-  const rows = unwrap(await supabase.from("reviews").select("*").order("sort_order"));
-  return rows.map(toReview);
+  if (DEMO) return seedReviews;
+  return (await request<Row[]>("/reviews")).map(toReview);
 }
 
 export async function fetchFaqs(): Promise<Faq[]> {
-  if (!supabase) return seedFaqs;
-  const rows = unwrap(await supabase.from("faqs").select("*").order("sort_order"));
-  return rows.map(toFaq);
+  if (DEMO) return seedFaqs;
+  return (await request<Row[]>("/faqs")).map(toFaq);
 }
 
 /** Tider som redan är bokade ett visst datum (inga personuppgifter lämnas ut). */
 export async function fetchBookedSlots(date: string): Promise<string[]> {
-  if (!supabase) return demo.bookings.filter((b) => b.date === date).map((b) => b.time);
-  const rows = unwrap(await supabase.rpc("booked_slots", { p_date: date }));
-  return (rows as { slot: string }[]).map((r) => r.slot);
+  if (DEMO) return demo.bookings.filter((b) => b.date === date).map((b) => b.time);
+  return request<string[]>(`/booked-slots?date=${encodeURIComponent(date)}`);
 }
 
 export async function placeBid(carId: string, name: string, amount: number): Promise<BidResult> {
-  if (supabase) {
-    return unwrap(
-      await supabase.rpc("place_bid", { p_car_id: carId, p_name: name, p_amount: amount }),
-    ) as BidResult;
-  }
+  if (!DEMO) return request<BidResult>("/bids", { method: "POST", body: { carId, name, amount } });
   const car = demo.cars.find((c) => c.id === carId);
   if (!car) return { ok: false, message: "Bilen hittades inte." };
   if (car.status === "sold" || new Date(car.endsAt).getTime() <= Date.now())
@@ -152,19 +151,11 @@ export async function placeBid(carId: string, name: string, amount: number): Pro
 }
 
 export async function createBooking(input: BookingInput): Promise<Booking> {
-  if (supabase) {
-    const result = unwrap(
-      await supabase.rpc("create_booking", {
-        p_service_id: input.serviceId,
-        p_date: input.date,
-        p_time: input.time,
-        p_name: input.name,
-        p_phone: input.phone,
-        p_email: input.email,
-        p_reg_number: input.regNumber ?? null,
-        p_notes: input.notes ?? null,
-      }),
-    ) as { id: string; created_at: string };
+  if (!DEMO) {
+    const result = await request<{ id: string; created_at: string }>("/bookings", {
+      method: "POST",
+      body: input,
+    });
     return { ...input, id: result.id, createdAt: result.created_at };
   }
   const booking = { ...input, id: demoId("bok"), createdAt: new Date().toISOString() };
@@ -173,22 +164,9 @@ export async function createBooking(input: BookingInput): Promise<Booking> {
 }
 
 export async function createSellRequest(input: SellRequestInput): Promise<void> {
-  if (!supabase) return;
-  unwrap(
-    await supabase.from("sell_requests").insert({
-      make: input.make,
-      model: input.model,
-      year: input.year,
-      mileage_km: input.mileageKm,
-      description: input.description,
-      name: input.name,
-      phone: input.phone,
-      email: input.email,
-    }),
-  );
+  if (!DEMO) await request("/sell-requests", { method: "POST", body: input });
 }
 
 export async function createContactMessage(input: ContactMessageInput): Promise<void> {
-  if (!supabase) return;
-  unwrap(await supabase.from("contact_messages").insert(input));
+  if (!DEMO) await request("/contact", { method: "POST", body: input });
 }

@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
-  readonly VITE_SUPABASE_URL?: string;
-  readonly VITE_SUPABASE_ANON_KEY?: string;
+  /** "true" = kör utan databas med lokal exempeldata */
+  readonly VITE_DEMO_DATA?: string;
 }

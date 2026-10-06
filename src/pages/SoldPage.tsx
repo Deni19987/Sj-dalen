@@ -6,7 +6,9 @@ import { useCars } from "../lib/queries";
 
 export function SoldPage() {
   const { data: cars, isLoading } = useCars();
-  const sold = (cars ?? []).filter((c) => c.status === "sold");
+  const sold = (cars ?? [])
+    .filter((c) => c.status === "sold")
+    .sort((a, b) => new Date(b.endsAt).getTime() - new Date(a.endsAt).getTime());
 
   return (
     <div>

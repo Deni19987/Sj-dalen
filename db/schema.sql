@@ -1,5 +1,6 @@
--- Sjödalen Bilar – databasschema
--- Kör i Supabase: SQL Editor (eller `supabase db push` med Supabase CLI)
+-- Sjödalen Bilar – databasschema (Neon / Postgres)
+-- Körs med `npm run db:setup` (eller klistra in i Neon Console → SQL Editor).
+-- Kan köras flera gånger.
 
 -- =====================================================================
 -- Publikt innehåll
@@ -111,41 +112,13 @@ create table if not exists public.contact_messages (
 );
 
 -- =====================================================================
--- Row Level Security
--- =====================================================================
-
-alter table public.services          enable row level security;
-alter table public.cars              enable row level security;
-alter table public.bids              enable row level security;
-alter table public.reviews           enable row level security;
-alter table public.faqs              enable row level security;
-alter table public.bookings          enable row level security;
-alter table public.sell_requests     enable row level security;
-alter table public.contact_messages  enable row level security;
-
--- Alla får läsa publikt innehåll
-create policy "Publik läsning" on public.services for select to anon, authenticated using (true);
-create policy "Publik läsning" on public.cars     for select to anon, authenticated using (true);
-create policy "Publik läsning" on public.bids     for select to anon, authenticated using (true);
-create policy "Publik läsning" on public.reviews  for select to anon, authenticated using (true);
-create policy "Publik läsning" on public.faqs     for select to anon, authenticated using (true);
-
--- Besökare får skicka in (men inte läsa) säljförfrågningar och meddelanden
-create policy "Besökare kan skicka" on public.sell_requests    for insert to anon, authenticated with check (true);
-create policy "Besökare kan skicka" on public.contact_messages for insert to anon, authenticated with check (true);
-
--- Bud och bokningar skapas bara via funktionerna nedan (ingen direkt insert-policy).
-
--- =====================================================================
--- Funktioner (RPC)
+-- Funktioner (anropas från API:t i netlify/functions)
 -- =====================================================================
 
 -- Lägg bud: validerar minsta bud och förlänger auktionen 5 min vid sena bud.
 create or replace function public.place_bid(p_car_id text, p_name text, p_amount integer)
 returns json
 language plpgsql
-security definer
-set search_path = public
 as $$
 declare
   v_car     public.cars%rowtype;
@@ -200,8 +173,6 @@ create or replace function public.create_booking(
 )
 returns json
 language plpgsql
-security definer
-set search_path = public
 as $$
 declare
   v_service public.services%rowtype;
@@ -231,22 +202,7 @@ $$;
 create or replace function public.booked_slots(p_date date)
 returns table (slot text)
 language sql
-security definer
-set search_path = public
 stable
 as $$
   select b.time as slot from public.bookings b where b.date = p_date;
 $$;
-
-revoke all on function public.place_bid(text, text, integer) from public;
-revoke all on function public.create_booking(text, date, text, text, text, text, text, text) from public;
-revoke all on function public.booked_slots(date) from public;
-grant execute on function public.place_bid(text, text, integer) to anon, authenticated;
-grant execute on function public.create_booking(text, date, text, text, text, text, text, text) to anon, authenticated;
-grant execute on function public.booked_slots(date) to anon, authenticated;
-
--- =====================================================================
--- Realtime: live-uppdatering av bud på auktionssidorna
--- =====================================================================
-alter publication supabase_realtime add table public.bids;
-alter publication supabase_realtime add table public.cars;

@@ -1,5 +1,5 @@
-// Demo-/startdata. Används när Supabase inte är konfigurerat (VITE_SUPABASE_URL saknas)
-// och motsvarar innehållet i supabase/seed.sql.
+// Demo-/startdata. Används i demoläge (VITE_DEMO_DATA=true)
+// och motsvarar innehållet i db/seed.sql.
 import type { Car, Faq, Review, Service } from "../lib/types";
 
 const HOUR = 3_600_000;

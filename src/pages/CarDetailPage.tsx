@@ -20,7 +20,7 @@ import { Countdown } from "../components/Countdown";
 import { bidsNewestFirst, currentPrice, isEnded, minNextBid } from "../lib/auction";
 import { cn } from "../lib/cn";
 import { formatKm, formatPrice, timeAgo } from "../lib/format";
-import { useAuctionRealtime, useCars, usePlaceBid } from "../lib/queries";
+import { useCars, usePlaceBid } from "../lib/queries";
 import type { BidResult, Car } from "../lib/types";
 import { useWatch } from "../lib/watchlist";
 
@@ -113,8 +113,7 @@ function BidHistory({ car }: { car: Car }) {
 
 export function CarDetailPage() {
   const { id } = route.useParams();
-  const { data: cars, isLoading } = useCars();
-  useAuctionRealtime();
+  const { data: cars, isLoading } = useCars({ live: true });
   const car = cars?.find((c) => c.id === id);
   const [watched, toggleWatch] = useWatch(id);
 
