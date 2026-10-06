@@ -1,0 +1,465 @@
+// Demo-/startdata. Används när Supabase inte är konfigurerat (VITE_SUPABASE_URL saknas)
+// och motsvarar innehållet i supabase/seed.sql.
+import type { Car, Faq, Review, Service } from "../lib/types";
+
+const HOUR = 3_600_000;
+const DAY = 24 * HOUR;
+const NOW = Date.now();
+const fromNow = (ms: number) => new Date(NOW + ms).toISOString();
+const ago = (ms: number) => new Date(NOW - ms).toISOString();
+
+export const seedServices: Service[] = [
+  {
+    id: "svc-ordinarie-service",
+    category: "Underhåll",
+    name: "Ordinarie service",
+    description:
+      "Enligt tillverkarens serviceschema – vätskor, filter och allmän kontroll.",
+    priceFrom: 1495,
+    priceTo: 2495,
+    durationMin: 60,
+    popular: true,
+  },
+  {
+    id: "svc-stor-service",
+    category: "Underhåll",
+    name: "Stor service",
+    description: "Utökad genomgång inför långresa eller vid högre miltal.",
+    priceFrom: 2995,
+    priceTo: 4495,
+    durationMin: 120,
+  },
+  {
+    id: "svc-oljebyte",
+    category: "Underhåll",
+    name: "Oljebyte",
+    description: "Olja och oljefilter enligt tillverkarens specifikation.",
+    priceFrom: 895,
+    priceTo: 1295,
+    durationMin: 30,
+  },
+  {
+    id: "svc-bromsar",
+    category: "Reparation",
+    name: "Bromsbyte fram/bak",
+    description: "Bromsskivor och/eller bromsbelägg, ett eller två axlar.",
+    priceFrom: 1990,
+    priceTo: 4990,
+    durationMin: 90,
+    popular: true,
+  },
+  {
+    id: "svc-koppling",
+    category: "Reparation",
+    name: "Kopplingsbyte",
+    description:
+      "Byte av kopplingssats inklusive lamell, urtrampningslager och tryckplatta.",
+    priceFrom: 6900,
+    priceTo: 11900,
+    durationMin: 240,
+  },
+  {
+    id: "svc-diagnos",
+    category: "Reparation",
+    name: "Felsökning & diagnos",
+    description:
+      "Datorstyrd felsökning när en varningslampa lyser eller bilen låter konstigt.",
+    priceFrom: 795,
+    durationMin: 45,
+  },
+  {
+    id: "svc-forbesiktning",
+    category: "Besiktning",
+    name: "Förbesiktning",
+    description:
+      "Vi går igenom bilen inför besiktningen och fixar det som brukar fälla.",
+    priceFrom: 595,
+    durationMin: 45,
+    popular: true,
+  },
+  {
+    id: "svc-efterkontroll",
+    category: "Besiktning",
+    name: "Efterkontroll",
+    description:
+      "Åtgärdar anmärkningar från besiktningen och kör efterkontroll åt dig.",
+    priceFrom: 395,
+    durationMin: 20,
+  },
+  {
+    id: "svc-hjulskifte",
+    category: "Däck",
+    name: "Däckbyte (hjulskifte)",
+    description:
+      "Byte mellan sommar- och vinterhjul, inklusive kontroll av mönsterdjup.",
+    priceFrom: 495,
+    durationMin: 30,
+    popular: true,
+  },
+  {
+    id: "svc-dackhotell",
+    category: "Däck",
+    name: "Däckhotell",
+    description:
+      "Säsongsförvaring av dina hjul i vårt lager – vi ringer när det är dags att byta.",
+    priceFrom: 995,
+    durationMin: 15,
+  },
+  {
+    id: "svc-ac",
+    category: "Övrigt",
+    name: "AC-service",
+    description: "Kontroll, läcksökning och fyllning av köldmedium.",
+    priceFrom: 995,
+    priceTo: 1495,
+    durationMin: 45,
+  },
+  {
+    id: "svc-rekond",
+    category: "Övrigt",
+    name: "Fordonstvätt & invändig rekond",
+    description: "Utvändig tvätt, dammsugning och invändig rengöring.",
+    priceFrom: 495,
+    priceTo: 1495,
+    durationMin: 60,
+  },
+];
+
+export const seedCars: Car[] = [
+  {
+    id: "volvo-v70-2014",
+    make: "Volvo",
+    model: "V70",
+    year: 2014,
+    title: "Volvo V70 D4 2014",
+    highlight: "Nyservad hos oss – redo att köras direkt.",
+    bodyType: "kombi",
+    colorName: "Silvermetallic",
+    colorHex: "#B8BEC4",
+    mileageKm: 182_000,
+    fuel: "Diesel",
+    gearbox: "Automat",
+    inspected: true,
+    conditionSummary: "Servad hos oss, i väntan på ny ägare.",
+    highlights: [
+      "Nyservad i vår verkstad",
+      "Nya bromsar fram",
+      "Kamrem bytt vid 150 000 km",
+    ],
+    thingsToNote: ["Mindre lackskada vänster framskärm"],
+    description:
+      "Pigg och välkörd familjekombi som gått igenom full service hos oss innan den läggs ut. Bra för den som vill ha mycket lastutrymme utan att betala nypris.",
+    startPrice: 45_000,
+    minIncrement: 1_000,
+    endsAt: fromNow(3 * DAY + 4 * HOUR),
+    status: "active",
+    bids: [
+      { id: "b1", name: "Anders K.", amount: 47_000, at: ago(2 * DAY) },
+      { id: "b2", name: "Malin S.", amount: 49500, at: ago(1 * DAY + 3 * HOUR) },
+      { id: "b3", name: "Johan L.", amount: 52_000, at: ago(5 * HOUR) },
+    ],
+  },
+  {
+    id: "vw-golf-2017",
+    make: "Volkswagen",
+    model: "Golf",
+    year: 2017,
+    title: "Volkswagen Golf 1.4 TSI 2017",
+    highlight: "En ägare, fullständig servicebok och nya däck runt om.",
+    bodyType: "halvkombi",
+    colorName: "Djupblå",
+    colorHex: "#2F5D8A",
+    mileageKm: 98_000,
+    fuel: "Bensin",
+    gearbox: "Manuell",
+    inspected: true,
+    conditionSummary: "Ett av de fräschaste objekten just nu.",
+    highlights: [
+      "Enbart en ägare",
+      "Fullständig servicebok",
+      "Nya däck runt om",
+    ],
+    thingsToNote: ["Normalt slitage på förarsätet"],
+    description:
+      "Lättkörd och sparsam femdörrars i fint skick. Perfekt förstabil eller pendlarbil.",
+    startPrice: 68_000,
+    minIncrement: 1_000,
+    endsAt: fromNow(1 * DAY + 9 * HOUR),
+    status: "active",
+    bids: [
+      { id: "b1", name: "Frida N.", amount: 69500, at: ago(20 * HOUR) },
+      { id: "b2", name: "Peter H.", amount: 71_000, at: ago(6 * HOUR) },
+    ],
+  },
+  {
+    id: "toyota-corolla-2016",
+    make: "Toyota",
+    model: "Corolla",
+    year: 2016,
+    title: "Toyota Corolla Touring Sports 2016",
+    highlight: "Kamkedja istället för kamrem – ett bekymmer mindre.",
+    bodyType: "kombi",
+    colorName: "Pärlvit",
+    colorHex: "#F1F2F0",
+    mileageKm: 121_000,
+    fuel: "Bensin",
+    gearbox: "Automat",
+    inspected: true,
+    conditionSummary: "Klassiskt pålitlig Toyota – låg driftskostnad.",
+    highlights: [
+      "Kamkedja (inget kamremsbyte behövs)",
+      "Nybesiktigad utan anmärkning",
+    ],
+    thingsToNote: ["Några mindre parkeringsmärken på stötfångarna"],
+    description:
+      "Trygg och stryktålig kombi känd för att gå långt utan strul.",
+    startPrice: 72_000,
+    minIncrement: 1_000,
+    endsAt: fromNow(5 * DAY),
+    status: "active",
+    bids: [{ id: "b1", name: "Camilla B.", amount: 73500, at: ago(1 * DAY) }],
+  },
+  {
+    id: "bmw-320d-2013",
+    make: "BMW",
+    model: "320d",
+    year: 2013,
+    title: "BMW 320d Sedan 2013",
+    highlight:
+      "Rejält nedprisad på grund av miltalet – körstark och gedigen ändå.",
+    bodyType: "sedan",
+    colorName: "Svart",
+    colorHex: "#1C1E22",
+    mileageKm: 245_000,
+    fuel: "Diesel",
+    gearbox: "Automat",
+    inspected: true,
+    conditionSummary: "Hög miltal – prissatt därefter. Fin köreknomi.",
+    highlights: [
+      "Nya däck vinter och sommar ingår",
+      "Stark och pigg trots miltalet",
+    ],
+    thingsToNote: [
+      "Servicebehov inom kort – vi berättar exakt vad vid visning",
+      "Mindre stenskott i vindrutan",
+    ],
+    description:
+      "Rejält nedprisad på grund av miltalet, men körstark och gedigen. Bra objekt för den händiga.",
+    startPrice: 34_000,
+    minIncrement: 500,
+    endsAt: fromNow(6 * HOUR),
+    status: "active",
+    bids: [
+      { id: "b1", name: "Oskar T.", amount: 35_000, at: ago(3 * DAY) },
+      { id: "b2", name: "Elin R.", amount: 36500, at: ago(1 * DAY + 8 * HOUR) },
+      { id: "b3", name: "Niklas E.", amount: 38_000, at: ago(2 * HOUR) },
+    ],
+  },
+  {
+    id: "kia-sportage-2016",
+    make: "Kia",
+    model: "Sportage",
+    year: 2016,
+    title: "Kia Sportage 1.7 CRDi 2016",
+    highlight: "Rymlig familje-SUV i bra skick, redo för vintern.",
+    bodyType: "suv",
+    colorName: "Grafitgrå",
+    colorHex: "#4A4E55",
+    mileageKm: 134_000,
+    fuel: "Diesel",
+    gearbox: "Automat",
+    inspected: true,
+    conditionSummary: "Rymlig SUV i bra skick, redo för vintern.",
+    highlights: [
+      "Dragkrok",
+      "Nyligen bytta bromsar runt om",
+      "Kias garanti gäller delvis kvar",
+    ],
+    thingsToNote: ["Normalt slitage i lastutrymmet"],
+    description:
+      "Populär familje-SUV med gott om plats och fyrhjulsdrift på de flesta modeller i den här generationen.",
+    startPrice: 79_000,
+    minIncrement: 1_000,
+    endsAt: fromNow(2 * DAY + 14 * HOUR),
+    status: "active",
+    bids: [],
+  },
+  {
+    id: "volvo-v40-2019",
+    make: "Volvo",
+    model: "V40",
+    year: 2019,
+    title: "Volvo V40 T3 2019 – Veckans bil",
+    highlight:
+      "Det finaste vi haft in på länge – lågmilare med skinnklädsel.",
+    bodyType: "halvkombi",
+    colorName: "Kritvit",
+    colorHex: "#F3F4F2",
+    mileageKm: 61_000,
+    fuel: "Bensin",
+    gearbox: "Manuell",
+    inspected: true,
+    conditionSummary: "Nyaste och finaste objektet i auktionen just nu.",
+    highlights: [
+      "Lågmilare",
+      "Skinnklädsel",
+      "Backkamera",
+      "Aldrig krockskadad",
+    ],
+    thingsToNote: ["Vinterdäcken är från föregående ägare, inte original"],
+    description:
+      "Det finaste vi haft in på länge. Servad och genomgången i vår verkstad – redo att bara hämtas och köras.",
+    startPrice: 112_000,
+    minIncrement: 2_000,
+    endsAt: fromNow(4 * DAY + 2 * HOUR),
+    status: "active",
+    bids: [
+      { id: "b1", name: "Sara V.", amount: 114_000, at: ago(2 * DAY) },
+      { id: "b2", name: "Mikael J.", amount: 118_000, at: ago(10 * HOUR) },
+    ],
+  },
+  {
+    id: "skoda-octavia-2018",
+    make: "Skoda",
+    model: "Octavia",
+    year: 2018,
+    title: "Skoda Octavia Combi 2018",
+    highlight: "Rymlig och pigg kombi – gick till ny ägare efter fem bud.",
+    bodyType: "kombi",
+    colorName: "Röd",
+    colorHex: "#B33025",
+    mileageKm: 76_000,
+    fuel: "Bensin",
+    gearbox: "Manuell",
+    inspected: true,
+    conditionSummary: "Solt objekt, gick till ny ägare efter fem bud.",
+    highlights: ["En ägare", "Fullservad hos oss", "Nya bromsar och däck"],
+    thingsToNote: ["Mindre buckla på bakre stötfångaren"],
+    description:
+      "Rymlig och pigg kombi som gick snabbt – ny ägare hämtade den redan dagen efter auktionsslut.",
+    startPrice: 89_000,
+    minIncrement: 1_000,
+    endsAt: ago(9 * DAY),
+    status: "sold",
+    soldPrice: 96_000,
+    bids: [
+      { id: "b1", name: "Fredrik A.", amount: 91_000, at: ago(12 * DAY) },
+      { id: "b2", name: "Linda P.", amount: 93500, at: ago(11 * DAY) },
+      { id: "b3", name: "Robert G.", amount: 96_000, at: ago(9 * DAY + 3 * HOUR) },
+    ],
+  },
+  {
+    id: "audi-a3-2015",
+    make: "Audi",
+    model: "A3",
+    year: 2015,
+    title: "Audi A3 Sportback 2015",
+    highlight: "Kompakt premiumbil som gick till högsta budet på tre veckor.",
+    bodyType: "halvkombi",
+    colorName: "Månsten grå",
+    colorHex: "#9AA0A6",
+    mileageKm: 143_000,
+    fuel: "Diesel",
+    gearbox: "Manuell",
+    inspected: true,
+    conditionSummary:
+      "Gick till budgivaren med högst slutbud för tre veckor sedan.",
+    highlights: ["Nyservad", "Nya kamremssats vid 120 000 km"],
+    thingsToNote: ["Lackskada på höger backspegel"],
+    description:
+      "Kompakt premiumbil som lämnade verkstaden i fint skick – redan i sitt nya hem.",
+    startPrice: 58_000,
+    minIncrement: 1_000,
+    endsAt: ago(23 * DAY),
+    status: "sold",
+    soldPrice: 61_000,
+    bids: [
+      { id: "b1", name: "Jonas W.", amount: 59_000, at: ago(25 * DAY) },
+      { id: "b2", name: "Åsa M.", amount: 61_000, at: ago(23 * DAY + 5 * HOUR) },
+    ],
+  },
+];
+
+export const seedReviews: Review[] = [
+  {
+    id: "r1",
+    name: "Petra Lindqvist",
+    rating: 5,
+    text: "Fick min Volvo servad på en dag och de förklarade precis vad som gjorts. Köpte sedan en bil till min son via auktionen – smidigt från start till mål.",
+    date: ago(14 * DAY),
+  },
+  {
+    id: "r2",
+    name: "Mattias Ohlsson",
+    rating: 5,
+    text: "Ärliga och raka i sin kommunikation. Blev uppringd innan de gjorde något som kostade extra.",
+    date: ago(30 * DAY),
+  },
+  {
+    id: "r3",
+    name: "Yasmin Al-Rawi",
+    rating: 5,
+    text: "Vann en bil på auktionen som redan var genomgången av verkstaden – kändes tryggare än att köpa privat.",
+    date: ago(6 * DAY),
+  },
+  {
+    id: "r4",
+    name: "Henrik Sundqvist",
+    rating: 4,
+    text: "Bra service, fick vänta någon dag extra på en reservdel men blev väl informerad hela vägen.",
+    date: ago(45 * DAY),
+  },
+  {
+    id: "r5",
+    name: "Carina Berg",
+    rating: 5,
+    text: "Har haft däckhotell hos dem i två år. Enkelt att boka och bilen är alltid ren när jag hämtar den.",
+    date: ago(60 * DAY),
+  },
+];
+
+export const seedFaqs: Faq[] = [
+  {
+    id: "f1",
+    question: "Behöver jag boka tid för service?",
+    answer:
+      "Ja, vi jobbar bokat för att kunna ge varje bil ordentligt med tid. Boka enklast direkt på sidan Boka tid, så bekräftar vi inom en arbetsdag.",
+  },
+  {
+    id: "f2",
+    question: 'Vad betyder "verkstadsbesiktigad" på auktionsbilarna?',
+    answer:
+      "Det betyder att bilen är genomgången av våra egna mekaniker innan den läggs ut – inte bara en snabb okulär koll som i en vanlig annons. Du ser alltid vad som är kontrollerat och åtgärdat på bilens egen sida.",
+  },
+  {
+    id: "f3",
+    question: "Hur fungerar budgivningen?",
+    answer:
+      "Varje bil har ett startpris och en nedräkning. Du lägger ett bud som är minst så högt som det angivna minsta nästa bud. Högsta bud när tiden går ut vinner. Vi kontaktar dig för betalning och avhämtning.",
+  },
+  {
+    id: "f4",
+    question:
+      "Kan jag sälja min bil till er utan att den läggs ut på auktion?",
+    answer:
+      'Ja. Fyll i formuläret under "Sälj din bil till oss" så återkommer vi med ett bud, oavsett om bilen sedan säljs vidare via auktionen eller inte.',
+  },
+  {
+    id: "f5",
+    question: "Erbjuder ni lånebil?",
+    answer:
+      "Vi har ett begränsat antal lånebilar för större jobb som tar mer än en dag. Fråga när du bokar, så ordnar vi det om vi har möjlighet.",
+  },
+  {
+    id: "f6",
+    question: "Vad händer om jag vinner en auktion?",
+    answer:
+      "Vi hör av oss samma eller nästa vardag med betalningsuppgifter. Bilen hämtas hos oss i Sjödalen, och vi hjälper till med ägarbyte på plats.",
+  },
+  {
+    id: "f7",
+    question: "Var ligger verkstaden?",
+    answer:
+      "Vi finns i Sjödalen. Fullständig adress och öppettider hittar du under Kontakt.",
+  },
+];
