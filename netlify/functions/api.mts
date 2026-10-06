@@ -17,8 +17,9 @@ const blobs: BlobStore = {
 
 export default createHandler(query, {
   blobs,
-  // ADMIN_PASSWORD (och gärna ADMIN_SECRET) sätts i Netlify → Environment variables.
-  auth: { password: process.env.ADMIN_PASSWORD, secret: process.env.ADMIN_SECRET },
+  // Huvudkontot: ADMIN_EMAIL + ADMIN_PASSWORD. ADMIN_SECRET signerar inloggningar.
+  // Sätts i Netlify → Site configuration → Environment variables.
+  auth: { email: process.env.ADMIN_EMAIL, password: process.env.ADMIN_PASSWORD, secret: process.env.ADMIN_SECRET },
 });
 
 export const config = { path: "/api/*" };

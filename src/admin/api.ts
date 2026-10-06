@@ -12,10 +12,19 @@ import type { Car, CarStatus, Faq, Review, Service, SiteSettings } from "../lib/
 const TOKEN_KEY = "sjodalen-admin-session";
 const listeners = new Set<() => void>();
 
-function readSession(): { token: string; expiresAt: number } | null {
+export interface Session {
+  token: string;
+  expiresAt: number;
+  email: string;
+  name: string;
+  owner: boolean;
+}
+
+function readSession(): Session | null {
   try {
     const s = JSON.parse(localStorage.getItem(TOKEN_KEY) ?? "null");
-    return s && s.expiresAt > Date.now() ? s : null;
+    // Kräver e-post så att sessioner från den äldre lösenordsinloggningen inte används
+    return s && s.expiresAt > Date.now() && typeof s.email === "string" ? s : null;
   } catch {
     return null;
   }
@@ -36,22 +45,19 @@ function setSession(s: typeof session) {
 
 export const authToken = () => (session && session.expiresAt > Date.now() ? session.token : null);
 
-export function useIsLoggedIn() {
+/** Inloggad användare (eller null). */
+export function useSession() {
   return useSyncExternalStore(
     (l) => {
       listeners.add(l);
       return () => listeners.delete(l);
     },
-    () => !!authToken(),
+    () => (authToken() ? session : null),
   );
 }
 
-export async function login(password: string, remember: boolean) {
-  const data = await request<{ token: string; expiresAt: number }>("/login", {
-    method: "POST",
-    body: { password, remember },
-  });
-  setSession(data);
+export async function login(email: string, password: string, remember: boolean) {
+  setSession(await request<Session>("/login", { method: "POST", body: { email, password, remember } }));
 }
 
 export const logout = () => setSession(null);
@@ -408,6 +414,42 @@ export const useSaveSettings = () =>
     (settings: SiteSettings) => request<SiteSettings>("/settings", { method: "PUT", body: settings }),
     [queryKeys.settings],
   );
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  name: string;
+  owner: boolean;
+  createdAt: string | null;
+  lastLoginAt: string | null;
+}
+
+export const useUsers = () =>
+  useQuery({
+    queryKey: ["admin", "users"],
+    queryFn: async () =>
+      (await request<Row[]>("/users")).map(
+        (r): AdminUser => ({
+          id: r.id,
+          email: r.email,
+          name: r.name,
+          owner: r.owner,
+          createdAt: r.created_at,
+          lastLoginAt: r.last_login_at,
+        }),
+      ),
+  });
+
+export const useCreateUser = () =>
+  useAdminMutation((u: { email: string; name: string; password: string }) => request("/users", { method: "POST", body: u }), [
+    ["admin", "users"],
+  ]);
+
+export const useDeleteUser = () =>
+  useAdminMutation((id: string) => request(`/users/${encodeURIComponent(id)}`, { method: "DELETE" }), [["admin", "users"]]);
+
+export const useChangePassword = () =>
+  useAdminMutation((p: { current: string; next: string }) => request("/password", { method: "POST", body: p }), []);
 
 /** Sparad beskärning för en uppladdad bild (för att kunna beskära om). */
 export const fetchImageMeta = (id: string) =>

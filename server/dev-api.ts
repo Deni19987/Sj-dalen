@@ -68,9 +68,10 @@ export function localApi(env: Record<string, string>): Plugin {
       if (env.LOCAL_API !== "true") return;
       const query = await createLocalDb();
       const blobs = fileBlobs(join(DATA_DIR, "blobs"));
+      const email = env.ADMIN_EMAIL || "admin@sjodalen.local";
       const password = env.ADMIN_PASSWORD || "admin";
       server.config.logger.info(
-        `\n  Lokalt API med inbyggd databas (${DATA_DIR}/). Admin: /admin – lösenord "${password}"\n`,
+        `\n  Lokalt API med inbyggd databas (${DATA_DIR}/). Admin: /admin – ${email} / "${password}"\n`,
       );
 
       server.middlewares.use(async (req, res, next) => {
@@ -78,7 +79,7 @@ export function localApi(env: Record<string, string>): Plugin {
         try {
           // Laddas via Vite så att ändringar i server/ slår igenom utan omstart.
           const { createHandler } = (await server.ssrLoadModule("/server/handler.ts")) as typeof import("./handler");
-          const handle = createHandler(query, { blobs, auth: { password, secret: env.ADMIN_SECRET } });
+          const handle = createHandler(query, { blobs, auth: { email, password, secret: env.ADMIN_SECRET } });
           await sendResponse(res, await handle(await toRequest(req)));
         } catch (err) {
           next(err);

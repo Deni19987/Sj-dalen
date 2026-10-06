@@ -156,6 +156,16 @@ alter table public.bookings add constraint bookings_status_check check (status i
 drop index if exists public.bookings_slot_uidx;
 create unique index if not exists bookings_slot_active_uidx on public.bookings(date, time) where status <> 'cancelled';
 
+-- Adminkonton (huvudkontot kommer från ADMIN_EMAIL/ADMIN_PASSWORD i Netlify, se server/auth.ts)
+create table if not exists public.admin_users (
+  id             uuid primary key default gen_random_uuid(),
+  email          text not null unique check (email = lower(email) and email ~* '^[^\s@]+@[^\s@]+\.[^\s@]+$'),
+  name           text not null default '' check (char_length(name) <= 80),
+  password_hash  text not null,
+  created_at     timestamptz not null default now(),
+  last_login_at  timestamptz
+);
+
 -- Webbplatsinställningar (kontaktuppgifter, öppettider, notisbanner …)
 create table if not exists public.settings (
   key         text primary key,

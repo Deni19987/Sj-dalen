@@ -35,7 +35,8 @@ Hela sajten **inklusive admin** lokalt, utan Neon (inbyggd Postgres via PGlite, 
 `.local-data/`):
 
 ```bash
-npm run dev:local      # http://localhost:5173 – admin på /admin, lösenord "admin" (ändra med ADMIN_PASSWORD)
+npm run dev:local      # http://localhost:5173 – admin på /admin: admin@sjodalen.local / "admin"
+                       # (ändra med ADMIN_EMAIL och ADMIN_PASSWORD)
 ```
 
 Ta bort mappen `.local-data/` för att börja om med startdata.
@@ -72,6 +73,7 @@ npm run db:setup       # skapar tabeller + funktioner och lägger in startdata
 | `contact_messages` | Kontaktformuläret |
 | `images` | Metadata för bilbilder (filerna ligger i Netlify Blobs) |
 | `settings` | Webbplatsinställningar (kontaktuppgifter, öppettider, notisbanner) |
+| `admin_users` | Adminkonton utöver huvudkontot (lösenord som hash) |
 
 Bud läggs via SQL-funktionen `place_bid`, som kontrollerar minsta bud och att auktionen pågår, och
 förlänger auktionen 5 minuter om budet kommer inom de sista 5 minuterna. Bokningar skapas via
@@ -108,11 +110,19 @@ bearbetas i webbläsaren innan uppladdning:
 Filerna lagras i **Netlify Blobs** (ingår i Netlify, ingen extra konfiguration) och visas via
 `/api/images/:id/:variant` med evig cache. Metadata ligger i tabellen `images`.
 
-### Inloggning
+### Inloggning och konton
 
-Sätt miljövariabeln `ADMIN_PASSWORD` i Netlify (Site configuration → Environment variables), gärna
-även `ADMIN_SECRET` (en lång slumpad sträng). Inloggningen ger en signerad token som gäller 1 dag
-(30 dagar med "Håll mig inloggad"). Byter man lösenord loggas alla enheter ut.
+Man loggar in med **e-post och lösenord**.
+
+- **Huvudkontot** sätts med miljövariablerna `ADMIN_EMAIL` och `ADMIN_PASSWORD` i Netlify
+  (Site configuration → Environment variables). Det fungerar alltid och är reservkontot om någon
+  låser ute sig. Lösenordet byts genom att ändra `ADMIN_PASSWORD` (och deploya om).
+- **Fler konton** läggs till i admin under *Inställningar → Användare*. Där kan man också ta bort
+  konton och byta sitt eget lösenord. Lösenord sparas bara som hash (PBKDF2) i tabellen `admin_users`.
+- Konton kan också skapas från terminalen direkt i Neon: `npm run admin:user -- namn@exempel.se`
+  (lösenordet frågas efter och skrivs aldrig till någon fil).
+- Sätt även `ADMIN_SECRET` (en lång slumpad sträng) som signerar inloggningarna. En inloggning gäller
+  1 dag, eller 30 dagar med "Håll mig inloggad". Byts ett lösenord loggas det kontot ut överallt.
 
 ### API (`netlify/functions/api.mts` → `server/handler.ts`)
 
@@ -132,7 +142,7 @@ Sätt miljövariabeln `ADMIN_PASSWORD` i Netlify (Site configuration → Environ
 1. Netlify → **Add new site → Import an existing project** → välj detta GitHub-repo.
 2. Bygginställningarna läses från `netlify.toml` (`npm run build`, publicerar `dist`, funktioner i `netlify/functions`).
 3. Under *Site configuration → Environment variables*: lägg till `DATABASE_URL` (Neons **pooled**
-   anslutningssträng, värdnamnet innehåller `-pooler`), `ADMIN_PASSWORD` och `ADMIN_SECRET`.
+   anslutningssträng, värdnamnet innehåller `-pooler`), `ADMIN_EMAIL`, `ADMIN_PASSWORD` och `ADMIN_SECRET`.
    Kör `npm run db:setup -- --schema-only` mot databasen när schemat ändrats (t.ex. när admin
    lades till) – det lägger till nya kolumner och tabeller utan att röra befintliga bilar och bud.
 4. Deploya. Direktlänkar som `/auktion/volvo-v70-2014` fungerar tack vare SPA-omdirigeringen i `netlify.toml`.
@@ -152,7 +162,8 @@ src/
   router.tsx    TanStack Router – alla routes
 server/handler.ts          API-logik (validering + SQL)
 server/admin.ts            Admin-API (bilar, bilder, inkorg, bokningar, innehåll, inställningar)
-server/auth.ts             Inloggning med signerad token
+server/auth.ts             Inloggning: konton, lösenordshashning och signerade tokens
+scripts/admin-user.mjs     Skapa adminkonto direkt i Neon (npm run admin:user)
 server/dev-api.ts          Lokalt API för `npm run dev:local` (PGlite + bilder på disk)
 netlify/functions/api.mts  Netlify Function som kopplar API:t till Neon
 db/schema.sql              Tabeller och SQL-funktioner

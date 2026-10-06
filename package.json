@@ -11,7 +11,8 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b",
-    "db:setup": "node scripts/db-setup.mjs"
+    "db:setup": "node scripts/db-setup.mjs",
+    "admin:user": "node scripts/admin-user.mjs"
   },
   "dependencies": {
     "@neon/config": "^1.8.4",

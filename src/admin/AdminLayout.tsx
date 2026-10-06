@@ -16,7 +16,7 @@ import {
 import { Logo } from "../components/Logo";
 import { DEMO } from "../lib/api";
 import { cn } from "../lib/cn";
-import { login, logout, useIsLoggedIn, useOverview } from "./api";
+import { login, logout, useOverview, useSession } from "./api";
 import { Btn, FeedbackProvider, Sheet, Toggle } from "./ui";
 
 interface NavItem {
@@ -55,6 +55,21 @@ function Badge({ n, className }: { n?: number; className?: string }) {
   );
 }
 
+function SignedInAs() {
+  const session = useSession();
+  if (!session) return null;
+  return (
+    <div className="mb-1 flex items-center gap-2.5 px-3 py-1.5">
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-b from-[#a1a1a6] to-[#7c7c80] text-[13px] font-semibold text-white">
+        {session.email.charAt(0).toUpperCase()}
+      </span>
+      <p className="min-w-0 truncate text-[13px] text-ios-secondary" title={session.email}>
+        {session.email}
+      </p>
+    </div>
+  );
+}
+
 function Sidebar({ pathname }: { pathname: string }) {
   const nav = useNav();
   return (
@@ -86,6 +101,7 @@ function Sidebar({ pathname }: { pathname: string }) {
         })}
       </nav>
       <div className="space-y-0.5 border-t border-black/[.06] pt-3">
+        <SignedInAs />
         <a
           href="/"
           target="_blank"
@@ -155,6 +171,9 @@ function TabBar({ pathname }: { pathname: string }) {
             ))}
           </div>
           <div className="mt-4 overflow-hidden rounded-[14px] bg-white">
+            <div className="border-b border-black/[.06] py-1.5">
+              <SignedInAs />
+            </div>
             <a href="/" target="_blank" rel="noopener" className="flex items-center gap-3 px-4 py-3 text-[17px] text-ios-blue">
               <ExternalLink size={18} /> Visa webbplatsen
             </a>
@@ -169,6 +188,13 @@ function TabBar({ pathname }: { pathname: string }) {
 }
 
 function LoginScreen() {
+  const [email, setEmail] = useState(() => {
+    try {
+      return localStorage.getItem("sjodalen-admin-email") ?? "";
+    } catch {
+      return "";
+    }
+  });
   const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -177,11 +203,16 @@ function LoginScreen() {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!password || busy) return;
+    if (!email.trim() || !password || busy) return;
     setBusy(true);
     setError(null);
     try {
-      await login(password, remember);
+      await login(email, password, remember);
+      try {
+        localStorage.setItem("sjodalen-admin-email", email.trim());
+      } catch {
+        /* privat läge */
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Kunde inte logga in.");
       setShake((s) => s + 1);
@@ -207,8 +238,21 @@ function LoginScreen() {
           <form key={shake} onSubmit={onSubmit} className={cn("mt-8 space-y-4 text-left", shake > 0 && "animate-ios-shake")}>
             <div className="overflow-hidden rounded-[14px] bg-white shadow-ios-card">
               <input
+                type="text"
+                inputMode="email"
+                autoCapitalize="none"
+                autoCorrect="off"
+                autoComplete="username"
+                autoFocus={!email}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="E-post"
+                aria-label="E-post"
+                className="w-full border-b border-black/[.06] bg-transparent px-4 py-3.5 text-[17px] outline-none placeholder:text-ios-tertiary"
+              />
+              <input
                 type="password"
-                autoFocus
+                autoFocus={!!email}
                 autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -221,7 +265,7 @@ function LoginScreen() {
               <Toggle checked={remember} onChange={setRemember} label="Håll mig inloggad" description="I 30 dagar på den här enheten" />
             </div>
             {error && <p className="px-1 text-center text-[14px] text-ios-red">{error}</p>}
-            <Btn type="submit" variant="primary" size="lg" className="w-full" loading={busy} disabled={!password}>
+            <Btn type="submit" variant="primary" size="lg" className="w-full" loading={busy} disabled={!email.trim() || !password}>
               Logga in
             </Btn>
           </form>
@@ -235,7 +279,7 @@ function LoginScreen() {
 }
 
 export function AdminLayout() {
-  const loggedIn = useIsLoggedIn();
+  const loggedIn = !!useSession();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   useEffect(() => {

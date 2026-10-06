@@ -1,6 +1,17 @@
 // Admin-API: /api/admin/*. Alla anrop utom inloggningen kräver en giltig token.
 
-import { bearer, checkPassword, createToken, verifyToken, type AuthConfig } from "./auth";
+import {
+  authEnabled,
+  authenticate,
+  bearer,
+  checkLogin,
+  createToken,
+  hashPassword,
+  normalizeEmail,
+  ownerEmail,
+  verifyPassword,
+  type AuthConfig,
+} from "./auth";
 import {
   body,
   bool,
@@ -202,6 +213,12 @@ function settingsValue(b: Record<string, any>) {
   };
 }
 
+function newPassword(v: unknown) {
+  if (typeof v !== "string" || v.length < 8) throw new HttpError(400, "Lösenordet måste vara minst 8 tecken.");
+  if (v.length > 200) throw new HttpError(400, "Lösenordet är för långt.");
+  return v;
+}
+
 /* ------------------------------------------------------------------ */
 /* Router                                                              */
 /* ------------------------------------------------------------------ */
@@ -213,24 +230,70 @@ export async function handleAdmin(req: Request, path: string, deps: AdminDeps): 
   const [section, id, sub] = parts.map(decodeURIComponent);
 
   if (section === "login" && method === "POST") {
-    if (!deps.auth.password)
-      throw new HttpError(503, "Admin är inte aktiverat. Lägg in miljövariabeln ADMIN_PASSWORD.");
+    if (!authEnabled(deps.auth))
+      throw new HttpError(503, "Admin är inte aktiverat. Lägg in ADMIN_EMAIL och ADMIN_PASSWORD i Netlify.");
     const b = await body(req);
-    const ok = typeof b.password === "string" && (await checkPassword(deps.auth, b.password));
-    if (!ok) {
+    const result =
+      typeof b.email === "string" && typeof b.password === "string" && b.password.length <= 200
+        ? await checkLogin(deps.auth, query, b.email, b.password)
+        : null;
+    if (!result) {
       await new Promise((r) => setTimeout(r, 600)); // bromsar gissningsförsök
-      throw new HttpError(401, "Fel lösenord.");
+      throw new HttpError(401, "Fel e-post eller lösenord.");
     }
-    return json(await createToken(deps.auth, b.remember ? 30 * DAY : DAY), 200, NO_CACHE);
+    return json(await createToken(deps.auth, result.identity, result.fingerprint, b.remember ? 30 * DAY : DAY), 200, NO_CACHE);
   }
 
-  if (!(await verifyToken(deps.auth, bearer(req)))) throw new HttpError(401, "Du är utloggad. Logga in igen.");
+  const me = await authenticate(deps.auth, query, bearer(req));
+  if (!me) throw new HttpError(401, "Du är utloggad. Logga in igen.");
 
   const route = `${method} ${section}${id ? "/:id" : ""}${sub ? `/${sub}` : ""}`;
 
   switch (route) {
     case "GET session":
+      return json(me, 200, NO_CACHE);
+
+    /* ---------------- Användare ---------------- */
+    case "GET users": {
+      const rows = await query("select id::text, email, name, created_at, last_login_at from admin_users order by created_at");
+      const owner = deps.auth.password
+        ? [{ id: "owner", email: ownerEmail(deps.auth), name: "Huvudkonto", owner: true, created_at: null, last_login_at: null }]
+        : [];
+      return json([...owner, ...rows.map((r) => ({ ...r, owner: false }))], 200, NO_CACHE);
+    }
+
+    case "POST users": {
+      const b = await body(req);
+      const mail = normalizeEmail(str(b.email, "e-post", { max: 254 })!);
+      if (!EMAIL_RE.test(mail)) throw new HttpError(400, "Ogiltig e-postadress.");
+      if (mail === ownerEmail(deps.auth)) throw new HttpError(409, "E-postadressen används redan av huvudkontot.");
+      const password = newPassword(b.password);
+      const rows = await query(
+        "insert into admin_users (email, name, password_hash) values ($1, $2, $3) returning id::text, email, name, created_at, last_login_at",
+        [mail, text(b.name, "namn", 80), await hashPassword(password)],
+      ).catch((err) => {
+        if ((err as { code?: string })?.code === "23505") throw new HttpError(409, "Det finns redan ett konto med den e-postadressen.");
+        return dbError(err);
+      });
+      return json({ ...rows[0], owner: false }, 201, NO_CACHE);
+    }
+
+    case "DELETE users/:id": {
+      if (id === "owner") throw new HttpError(400, "Huvudkontot styrs av ADMIN_EMAIL och ADMIN_PASSWORD i Netlify.");
+      if (id === me.id) throw new HttpError(400, "Du kan inte ta bort ditt eget konto.");
+      await query("delete from admin_users where id::text = $1", [id]);
       return json({ ok: true }, 200, NO_CACHE);
+    }
+
+    case "POST password": {
+      if (me.owner) throw new HttpError(400, "Huvudkontots lösenord ändras med ADMIN_PASSWORD i Netlify.");
+      const b = await body(req);
+      const rows = await query("select password_hash from admin_users where id::text = $1", [me.id]);
+      if (!rows[0] || typeof b.current !== "string" || !(await verifyPassword(b.current, rows[0].password_hash)))
+        throw new HttpError(400, "Nuvarande lösenord stämmer inte.");
+      await query("update admin_users set password_hash = $2 where id::text = $1", [me.id, await hashPassword(newPassword(b.next))]);
+      return json({ ok: true }, 200, NO_CACHE);
+    }
 
     /* ---------------- Översikt ---------------- */
     case "GET overview": {
