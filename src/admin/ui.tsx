@@ -71,8 +71,12 @@ export function Btn({ variant = "secondary", size = "md", loading, icon, classNa
 /* Ytor och text                                                        */
 /* ------------------------------------------------------------------ */
 
-export function Card({ className, children, padded = true }: { className?: string; children: ReactNode; padded?: boolean }) {
-  return <div className={cn("rounded-[20px] bg-white shadow-ios-card", padded && "p-5 sm:p-6", className)}>{children}</div>;
+export function Card({ id, className, children, padded = true }: { id?: string; className?: string; children: ReactNode; padded?: boolean }) {
+  return (
+    <div id={id} className={cn("rounded-[20px] bg-white shadow-ios-card", padded && "p-5 sm:p-6", className)}>
+      {children}
+    </div>
+  );
 }
 
 export function PageHeader({

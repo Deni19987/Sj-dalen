@@ -56,13 +56,21 @@ const clipList = (v: unknown, items: number, max: number) =>
   Array.isArray(v) ? v.map((x) => clip(x, max)).filter(Boolean).slice(0, items) : [];
 
 /** Anropar Gemini och returnerar svaret som JSON enligt `schema`. */
-async function gemini(env: Env, system: string, user: string, schema: object, temperature: number): Promise<Record<string, unknown>> {
-  const key = env.GEMINI_API_KEY;
+export async function gemini(
+  env: Env,
+  system: string,
+  user: string,
+  schema: object,
+  temperature: number,
+  timeoutMs = 20_000,
+): Promise<Record<string, unknown>> {
+  const key = env.GEMINI_API_KEY?.trim().replace(/^["']|["']$/g, "");
   if (!key) throw new HttpError(503, "AI är inte aktiverat. Lägg in GEMINI_API_KEY i Netlify (samma nyckel som i Carflow).");
   const model = env.GEMINI_MODEL || "gemini-2.5-flash";
 
   const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
     method: "POST",
+    signal: AbortSignal.timeout(timeoutMs),
     headers: { "content-type": "application/json", "x-goog-api-key": key },
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: system }] },
@@ -105,34 +113,49 @@ export async function writeCarAd(env: Env, car: Record<string, unknown>): Promis
 }
 
 /* ------------------------------------------------------------------ */
-/* Standardutrustning                                                   */
+/* Utrustning: standard + möjliga tillval för bilen                     */
 /* ------------------------------------------------------------------ */
 
 const EQUIPMENT_PROMPT = `Du är expert på bilars utrustningsnivåer på den svenska marknaden.
 
-Du får en bil (märke, modell, årsmodell och ibland utförande, motor, bränsle och växellåda) och en lista med utrustning.
-Välj ut den utrustning i listan som är STANDARD på bilen – alltså sådant som varje exemplar av den här modellen och årsmodellen har från fabrik i Sverige.
+Du får en bil (märke, modell, årsmodell och ibland utförande, motor, bränsle och växellåda) och en utrustningslista.
+Svara med två listor:
 
-Regler:
-- Om utförande (t.ex. "Momentum", "Comfortline", "GT-Line") anges: välj det som är standard på just det utförandet.
-- Om inget utförande anges: välj BARA det som är standard på det enklaste utförandet (basnivån) som såldes i Sverige.
-- Ta inte med tillval, utrustningspaket eller sådant som bara vissa exemplar har.
-- Är du osäker på en punkt – ta inte med den. Hellre för få än fel.
-- Svara bara med namn exakt som de står i listan.`;
+1. standard – utrustning som är STANDARD på bilen, alltså sådant som varje exemplar av den här modellen och årsmodellen har från fabrik i Sverige.
+   - Om utförande (t.ex. "Momentum", "Comfortline", "GT-Line") anges: det som är standard på just det utförandet.
+   - Om inget utförande anges: BARA det som är standard på det enklaste utförandet (basnivån) som såldes i Sverige.
+   - Ta inte med tillval, paket eller sådant som bara vissa exemplar har. Är du osäker – ta inte med punkten.
+   - Använd bara namn exakt som de står i utrustningslistan.
 
-export async function standardEquipment(env: Env, car: Record<string, unknown>): Promise<string[]> {
+2. options – utrustning som INTE är standard men som gick att få till just den här modellen och årsmodellen (tillval, paket, högre utföranden, vanlig eftermontering som dragkrok och motorvärmare).
+   - Använd namn från utrustningslistan när de passar.
+   - Modellspecifika tillval som inte finns i listan får du ta med med ett kort svenskt namn (max 4 ord), t.ex. "Harman Kardon-ljudsystem" eller "Volvo On Call".
+   - Ta bara med sådant du är säker på finns till modellen. Högst 25 punkter.
+   - Inget i options får finnas i standard.`;
+
+const cleanItem = (x: unknown) => (typeof x === "string" ? x.replace(/\s+/g, " ").trim().slice(0, 60) : "");
+
+export async function equipmentSuggestions(env: Env, car: Record<string, unknown>): Promise<{ standard: string[]; options: string[] }> {
   const out = await gemini(
     env,
     EQUIPMENT_PROMPT,
     `Bil:\n${JSON.stringify(car, null, 2)}\n\nUtrustningslista:\n${ALL_EQUIPMENT.join("\n")}`,
     {
       type: "OBJECT",
-      properties: { standard: { type: "ARRAY", items: { type: "STRING", enum: ALL_EQUIPMENT } } },
-      required: ["standard"],
+      properties: {
+        standard: { type: "ARRAY", items: { type: "STRING", enum: ALL_EQUIPMENT } },
+        options: { type: "ARRAY", items: { type: "STRING" } },
+      },
+      required: ["standard", "options"],
     },
     0.1,
   );
-  const known = new Set(ALL_EQUIPMENT);
-  const list = Array.isArray(out.standard) ? out.standard.filter((x): x is string => typeof x === "string" && known.has(x)) : [];
-  return [...new Set(list)];
+  const byLower = new Map(ALL_EQUIPMENT.map((e) => [e.toLowerCase(), e]));
+  const toCatalog = (x: string) => byLower.get(x.toLowerCase()) ?? x;
+  const standard = [...new Set((Array.isArray(out.standard) ? out.standard : []).map(cleanItem).filter((x) => byLower.has(x.toLowerCase())).map(toCatalog))];
+  const std = new Set(standard);
+  const options = [...new Set((Array.isArray(out.options) ? out.options : []).map(cleanItem).filter(Boolean).map(toCatalog))]
+    .filter((x) => !std.has(x))
+    .slice(0, 30);
+  return { standard, options };
 }
