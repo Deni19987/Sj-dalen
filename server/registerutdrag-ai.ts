@@ -165,7 +165,7 @@ export async function extractWithAi(env: Env, emailText: string): Promise<Extrac
   const text = redactPersonalData(emailText).slice(0, 12_000);
   let out: Record<string, unknown>;
   try {
-    out = await gemini(env, PROMPT, `Registerutdrag:\n"""\n${text}\n"""`, SCHEMA, 0, 7_000);
+    out = await gemini(env, PROMPT, `Registerutdrag:\n"""\n${text}\n"""`, SCHEMA, 0, { timeoutMs: 8_000, fast: true });
   } catch (err) {
     console.error("AI-tolkning av registerutdrag misslyckades", err);
     return null;

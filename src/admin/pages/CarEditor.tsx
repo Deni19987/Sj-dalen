@@ -637,6 +637,7 @@ function CarEditor({ car }: { car?: AdminCar }) {
                 <Btn variant="primary" icon={<Search size={16} />} loading={lookupBusy} onClick={onLookup} disabled={!form.regNumber.trim()}>
                   Hämta från e-post
                 </Btn>
+                {lookupBusy && <p className="text-center text-[12px] text-ios-secondary">Söker i inkorgen och läser registerutdraget …</p>}
               </div>
             </div>
             {lookupInfo && <p className="rounded-[12px] bg-ios-green/10 px-4 py-2.5 text-[14px] text-ios-label">{lookupInfo}</p>}
