@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { Link, useBlocker, useNavigate, useParams } from "@tanstack/react-router";
-import { ChevronLeft, ExternalLink, Gavel, Loader2, Mail, Phone, Plus, Search, Sparkles, Store, Trash2, X } from "lucide-react";
+import { ChevronLeft, Copy, ExternalLink, Gavel, Loader2, Mail, Phone, Plus, Search, Sparkles, Store, Trash2, X } from "lucide-react";
 import { CarCard } from "../../components/CarCard";
 import { cn } from "../../lib/cn";
 import type { BodyType, Car, CarStatus } from "../../lib/types";
@@ -29,6 +29,15 @@ const SERVICE_HISTORY = ["Full servicehistorik", "Delvis servicehistorik", "Serv
 const TS_URL = "https://fordon-fu-regnr.transportstyrelsen.se/";
 // Inkorgen som registerutdragen skickas till (samma som Carflow). Kan ändras med VITE_VEHICLE_LOOKUP_INBOX.
 const LOOKUP_INBOX = import.meta.env.VITE_VEHICLE_LOOKUP_INBOX || "deni.ferchichi@scandicreach.se";
+
+// iOS öppnar target="_blank"-länkar från en hemskärmsapp i ett inbäddat Safari-fönster, där
+// BankID:s återhopp kan tappa sessionen. "x-safari-" tvingar fram riktiga Safari (samma som Carflow).
+function openInRealBrowser(e: MouseEvent<HTMLAnchorElement>) {
+  const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  if (!ios) return;
+  e.preventDefault();
+  window.location.href = e.currentTarget.href.replace(/^https:\/\//, "x-safari-https://");
+}
 
 const COLORS = [
   { name: "Svart", hex: "#1C1E22" },
@@ -535,9 +544,53 @@ function CarEditor({ car }: { car?: AdminCar }) {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="space-y-6">
-          <Section title="Hämta bilens uppgifter" description="Skriv registreringsnumret och hämta allt från Transportstyrelsen – eller fyll i själv nedan.">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-              <Field label="Registreringsnummer" className="sm:w-56">
+          <Section title="Hämta bilens uppgifter" description="Hämta allt från Transportstyrelsen i två steg – eller hoppa över och fyll i själv nedan.">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="flex flex-col gap-3 rounded-[12px] bg-ios-fill2 p-4">
+                <p className="text-[15px] font-semibold">
+                  <span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-ios-blue text-[13px] text-white">1</span>
+                  Beställ registerutdrag
+                </p>
+                <p className="text-[13px] leading-relaxed text-ios-secondary">
+                  Signera med BankID hos Transportstyrelsen och ange den här e-postadressen som mottagare:
+                </p>
+                <div className="flex items-center gap-2 rounded-[10px] bg-white px-3 py-2">
+                  <span className="min-w-0 flex-1 break-all font-mono text-[13px]">{LOOKUP_INBOX}</span>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(LOOKUP_INBOX);
+                        toast("E-postadressen är kopierad");
+                      } catch {
+                        toast("Kunde inte kopiera – skriv in adressen själv.", "error");
+                      }
+                    }}
+                    className="flex shrink-0 items-center gap-1 rounded-full bg-ios-fill2 px-2.5 py-1 text-[12px] font-medium text-ios-blue hover:bg-ios-fill"
+                  >
+                    <Copy size={12} /> Kopiera
+                  </button>
+                </div>
+                <a
+                  href={TS_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={openInRealBrowser}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-ios-blue/10 px-4 text-[15px] font-medium text-ios-blue transition hover:bg-ios-blue/15"
+                >
+                  <ExternalLink size={16} /> Gå till Transportstyrelsen
+                </a>
+              </div>
+
+              <div className="flex flex-col gap-3 rounded-[12px] bg-ios-fill2 p-4">
+                <p className="text-[15px] font-semibold">
+                  <span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-ios-blue text-[13px] text-white">2</span>
+                  Hämta uppgifterna
+                </p>
+                <p className="text-[13px] leading-relaxed text-ios-secondary">
+                  När mejlet har kommit (oftast inom någon minut): skriv registreringsnumret och tryck på Hämta. Märke, modell, färg, miltal, ägare,
+                  besiktning och standardutrustning fylls i.
+                </p>
                 <Input
                   value={form.regNumber}
                   onChange={(e) => set("regNumber", e.target.value.toUpperCase())}
@@ -550,28 +603,15 @@ function CarEditor({ car }: { car?: AdminCar }) {
                   placeholder="ABC 123"
                   maxLength={10}
                   autoCapitalize="characters"
-                  className="font-semibold tracking-wider"
+                  aria-label="Registreringsnummer"
+                  className="bg-white font-semibold tracking-wider"
                 />
-              </Field>
-              <Btn variant="primary" icon={<Search size={16} />} loading={lookupBusy} onClick={onLookup} disabled={!form.regNumber.trim()}>
-                Hämta från Transportstyrelsen
-              </Btn>
+                <Btn variant="primary" icon={<Search size={16} />} loading={lookupBusy} onClick={onLookup} disabled={!form.regNumber.trim()}>
+                  Hämta från e-post
+                </Btn>
+              </div>
             </div>
             {lookupInfo && <p className="rounded-[12px] bg-ios-green/10 px-4 py-2.5 text-[14px] text-ios-label">{lookupInfo}</p>}
-            <details className="rounded-[12px] bg-ios-fill2 px-4 py-3 text-[14px] text-ios-secondary">
-              <summary className="cursor-pointer font-medium text-ios-label">Så fungerar det</summary>
-              <ol className="mt-2 list-decimal space-y-1 pl-5 leading-relaxed">
-                <li>
-                  Beställ ett registerutdrag hos{" "}
-                  <a href={TS_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-ios-blue">
-                    Transportstyrelsen <ExternalLink size={12} />
-                  </a>{" "}
-                  (BankID) med <span className="font-mono text-ios-label">{LOOKUP_INBOX}</span> som mottagare.
-                </li>
-                <li>Vänta någon minut tills mejlet har kommit fram.</li>
-                <li>Tryck på ”Hämta från Transportstyrelsen” – märke, modell, år, färg, miltal, ägare och besiktning fylls i.</li>
-              </ol>
-            </details>
           </Section>
 
           <Section title="Bilder" description="Välj flera bilder på en gång. De beskärs automatiskt till 4:3 – tryck på en bild för att justera.">
