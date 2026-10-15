@@ -1,0 +1,138 @@
+// AI-skriven annonstext för auktionsbilar (Google Gemini – samma AI-nyckel som Carflow).
+//
+// Miljövariabler:
+//   GEMINI_API_KEY   – krävs
+//   GEMINI_MODEL     – valfri, standard "gemini-2.5-flash"
+
+import { HttpError } from "./http";
+import { ALL_EQUIPMENT } from "../src/lib/equipment";
+import type { Env } from "./vehicle-lookup";
+
+export interface AdText {
+  title: string;
+  highlight: string;
+  description: string;
+  conditionSummary: string;
+  highlights: string[];
+  thingsToNote: string[];
+}
+
+const SYSTEM_PROMPT = `Du skriver bilannonser på svenska för Sjödalen Bilar AB – en bilverkstad som säljer begagnade bilar på auktion på sin egen webbplats. Bilarna har gåtts igenom i den egna verkstaden.
+
+Du får uppgifter om en bil som JSON. Skriv en säljande men ärlig och saklig annons.
+
+ABSOLUT VIKTIGAST – HITTA INTE PÅ:
+- Påståenden om just DEN HÄR bilen (utrustning, service, skick, skador, däck, ägare, besiktning, historik) får bara bygga på uppgifterna du fått.
+- Nämn aldrig utrustning som inte står i uppgifterna, även om modellen ofta har den.
+- Du får använda allmän, välkänd kunskap om bilmodellen (t.ex. att modellen är känd för rymlighet, driftsäkerhet eller låg förbrukning), men formulera det som något modellen är känd för – inte som fakta om den här bilen.
+- Hitta aldrig på siffror (effekt, förbrukning, pris, mätarställning, datum).
+- Saknas något – skriv inget om det.
+
+Fält att returnera:
+- title: Rubrik, max 70 tecken. Märke, modell (gärna motor/utförande om det finns) och årsmodell, gärna följt av " – " och 1–2 starka säljargument från uppgifterna. Exempel: "Volvo V70 D4 Momentum 2014 – Dragkrok & full servicehistorik".
+- highlight: Kort säljtext för bilkortet, en mening, max 180 tecken.
+- description: Huvudtexten, 2–4 korta stycken separerade med en tom rad. Inled med vad bilen är och vem den passar. Ta med skick, historik och de mest attraktiva utrustningsdetaljerna från uppgifterna (hela utrustningslistan visas separat i annonsen, så räkna inte upp allt). Avsluta med en mening om att bilen är genomgången i vår verkstad och säljs på auktion (bara om "verkstadsbesiktigad" är sann, annars att den säljs på auktion). Ingen markdown, inga emojis, inga rubriker, inga punktlistor, inga priser.
+- conditionSummary: Skicket i en kort mening, max 120 tecken.
+- highlights: 3–6 korta punkter (max 60 tecken var) med de främsta fördelarna – bara från uppgifterna.
+- thingsToNote: Det köparen bör känna till (kända brister, skador, kommande besiktning, saknade delar) – bara från uppgifterna. Tom lista om inget finns.
+
+Skriv naturlig, korrekt svenska. Mätarställning skrivs i mil (1 mil = 10 km), t.ex. "12 300 mil".`;
+
+const SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    title: { type: "STRING" },
+    highlight: { type: "STRING" },
+    description: { type: "STRING" },
+    conditionSummary: { type: "STRING" },
+    highlights: { type: "ARRAY", items: { type: "STRING" } },
+    thingsToNote: { type: "ARRAY", items: { type: "STRING" } },
+  },
+  required: ["title", "highlight", "description", "conditionSummary", "highlights", "thingsToNote"],
+};
+
+const clip = (s: unknown, max: number) => (typeof s === "string" ? s.replace(/\*\*|__|#+ /g, "").trim().slice(0, max) : "");
+const clipList = (v: unknown, items: number, max: number) =>
+  Array.isArray(v) ? v.map((x) => clip(x, max)).filter(Boolean).slice(0, items) : [];
+
+/** Anropar Gemini och returnerar svaret som JSON enligt `schema`. */
+async function gemini(env: Env, system: string, user: string, schema: object, temperature: number): Promise<Record<string, unknown>> {
+  const key = env.GEMINI_API_KEY;
+  if (!key) throw new HttpError(503, "AI är inte aktiverat. Lägg in GEMINI_API_KEY i Netlify (samma nyckel som i Carflow).");
+  const model = env.GEMINI_MODEL || "gemini-2.5-flash";
+
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-goog-api-key": key },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: system }] },
+      contents: [{ role: "user", parts: [{ text: user }] }],
+      generationConfig: {
+        temperature,
+        responseMimeType: "application/json",
+        responseSchema: schema,
+        // Snabbare svar – inget långt "tänkande" behövs.
+        ...(model.startsWith("gemini-2.5-flash") ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+      },
+    }),
+  });
+  if (!res.ok) {
+    console.error("Gemini", res.status, await res.text().catch(() => ""));
+    throw new HttpError(502, res.status === 429 ? "AI:n är överbelastad just nu. Försök igen om en stund." : "AI:n kunde inte svara. Försök igen.");
+  }
+  const data = (await res.json()) as any;
+  const raw = data?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join("") ?? "";
+  try {
+    return JSON.parse(raw);
+  } catch {
+    console.error("Gemini gav ogiltig JSON", raw.slice(0, 500));
+    throw new HttpError(502, "AI:n gav ett ofullständigt svar. Försök igen.");
+  }
+}
+
+export async function writeCarAd(env: Env, car: Record<string, unknown>): Promise<AdText> {
+  const out = await gemini(env, SYSTEM_PROMPT, `Uppgifter om bilen:\n${JSON.stringify(car, null, 2)}`, SCHEMA, 0.6);
+  const ad: AdText = {
+    title: clip(out.title, 120),
+    highlight: clip(out.highlight, 200),
+    description: clip(out.description, 8000),
+    conditionSummary: clip(out.conditionSummary, 500),
+    highlights: clipList(out.highlights, 8, 200),
+    thingsToNote: clipList(out.thingsToNote, 8, 200),
+  };
+  if (!ad.title || !ad.description) throw new HttpError(502, "AI:n gav ett ofullständigt svar. Försök igen.");
+  return ad;
+}
+
+/* ------------------------------------------------------------------ */
+/* Standardutrustning                                                   */
+/* ------------------------------------------------------------------ */
+
+const EQUIPMENT_PROMPT = `Du är expert på bilars utrustningsnivåer på den svenska marknaden.
+
+Du får en bil (märke, modell, årsmodell och ibland utförande, motor, bränsle och växellåda) och en lista med utrustning.
+Välj ut den utrustning i listan som är STANDARD på bilen – alltså sådant som varje exemplar av den här modellen och årsmodellen har från fabrik i Sverige.
+
+Regler:
+- Om utförande (t.ex. "Momentum", "Comfortline", "GT-Line") anges: välj det som är standard på just det utförandet.
+- Om inget utförande anges: välj BARA det som är standard på det enklaste utförandet (basnivån) som såldes i Sverige.
+- Ta inte med tillval, utrustningspaket eller sådant som bara vissa exemplar har.
+- Är du osäker på en punkt – ta inte med den. Hellre för få än fel.
+- Svara bara med namn exakt som de står i listan.`;
+
+export async function standardEquipment(env: Env, car: Record<string, unknown>): Promise<string[]> {
+  const out = await gemini(
+    env,
+    EQUIPMENT_PROMPT,
+    `Bil:\n${JSON.stringify(car, null, 2)}\n\nUtrustningslista:\n${ALL_EQUIPMENT.join("\n")}`,
+    {
+      type: "OBJECT",
+      properties: { standard: { type: "ARRAY", items: { type: "STRING", enum: ALL_EQUIPMENT } } },
+      required: ["standard"],
+    },
+    0.1,
+  );
+  const known = new Set(ALL_EQUIPMENT);
+  const list = Array.isArray(out.standard) ? out.standard.filter((x): x is string => typeof x === "string" && known.has(x)) : [];
+  return [...new Set(list)];
+}

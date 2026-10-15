@@ -108,6 +108,24 @@ bearbetas i webbläsaren innan uppladdning:
 Filerna lagras i **Netlify Blobs** (ingår i Netlify, ingen extra konfiguration) och visas via
 `/api/images/:id/:variant` med evig cache. Metadata ligger i tabellen `images`.
 
+### Annonshjälp: Transportstyrelsen, AI och Blocket
+
+I bilredigeringen:
+
+- **Hämta från Transportstyrelsen** – samma flöde som i Carflow. Beställ ett registerutdrag på
+  [fordon-fu-regnr.transportstyrelsen.se](https://fordon-fu-regnr.transportstyrelsen.se/) med den
+  gemensamma inkorgen som mottagare, skriv registreringsnumret och tryck *Hämta*. Märke, modell, färg,
+  miltal, antal ägare och besiktningsdatum fylls i. Bara fordonsuppgifter läses – aldrig ägarens namn
+  eller adress. Kräver `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET` och `GMAIL_REFRESH_TOKEN` (samma värden
+  som i Carflow). `VITE_VEHICLE_LOOKUP_INBOX` ändrar vilken mottagaradress som visas.
+- **Mer om bilen** – utförande, hk, drivning, ägare, servicehistorik, nycklar, besiktning, däck,
+  utrustning (klickbara val) och fritext. Sparas i `cars.facts` och syns bara i admin.
+- **Skriv annonsen med AI** – Google Gemini skriver rubrik, säljtext, beskrivning, skick, höjdpunkter
+  och "att känna till" utifrån allt ovan. Kräver `GEMINI_API_KEY` (samma som Carflow); `GEMINI_MODEL`
+  är valfri (standard `gemini-2.5-flash`).
+- **Lägg upp på Blocket** – alla fält i Blockets ordning med kopieringsknappar, *Kopiera allt*, pris
+  för Blocket och en knapp som sparar alla bilder (delas till Bilder på mobilen).
+
 ### Inloggning
 
 Sätt miljövariabeln `ADMIN_PASSWORD` i Netlify (Site configuration → Environment variables), gärna

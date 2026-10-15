@@ -12,8 +12,12 @@ import {
   Palette,
   Settings2,
   ShieldCheck,
+  Check,
+  ChevronDown,
+  ListChecks,
 } from "lucide-react";
 import { Badge } from "../components/Badge";
+import { groupEquipment } from "../lib/equipment";
 import { Button } from "../components/Button";
 import { CarGallery } from "../components/CarGallery";
 import { Countdown } from "../components/Countdown";
@@ -318,8 +322,54 @@ export function CarDetailPage() {
               </>
             )}
           </div>
+
+          <EquipmentList items={car.equipment ?? []} />
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Utrustningen grupperad (Komfort, Säkerhet …). Långa listor fälls ihop. */
+function EquipmentList({ items }: { items: string[] }) {
+  const [open, setOpen] = useState(false);
+  const groups = groupEquipment(items);
+  if (!groups.length) return null;
+  const collapsible = items.length > 12;
+  const shown = collapsible && !open ? groups.slice(0, 2) : groups;
+
+  return (
+    <div className="mt-6 rounded-2xl border border-graphite-200 p-6">
+      <h2 className="flex items-center gap-2 font-display font-bold text-graphite-900">
+        <ListChecks size={18} className="text-blue-500" /> Utrustning
+        <span className="text-sm font-normal text-graphite-400">({items.length})</span>
+      </h2>
+      <div className="mt-4 space-y-5">
+        {shown.map((g) => (
+          <div key={g.name}>
+            <h3 className="text-xs font-bold uppercase tracking-wide text-graphite-400">{g.name}</h3>
+            <ul className="mt-2 grid grid-cols-1 gap-x-4 gap-y-1.5 sm:grid-cols-2">
+              {g.items.map((item) => (
+                <li key={item} className="flex items-start gap-2 text-sm text-graphite-700">
+                  <Check size={15} className="mt-0.5 shrink-0 text-blue-500" strokeWidth={2.5} />
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+      {collapsible && (
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-blue-600"
+          aria-expanded={open}
+        >
+          {open ? "Visa mindre" : `Visa all utrustning (${items.length})`}
+          <ChevronDown size={16} className={cn("transition-transform", open && "rotate-180")} />
+        </button>
+      )}
     </div>
   );
 }

@@ -51,6 +51,7 @@ const adminOverviewRoute = adminPage("/", "OverviewPage");
 const adminCarsRoute = adminPage("/bilar", "CarsPage");
 const adminCarNewRoute = adminPage("/bilar/ny", "CarEditorPage");
 const adminCarEditRoute = adminPage("/bilar/$id", "CarEditorPage");
+const adminBlocketRoute = adminPage("/bilar/$id/blocket", "BlocketWindowPage");
 const adminBidsRoute = adminPage("/bud", "BidsPage");
 const adminInboxRoute = adminPage("/inkorg", "InboxPage");
 const adminBookingsRoute = adminPage("/bokningar", "BookingsPage");
@@ -73,6 +74,7 @@ const routeTree = rootRoute.addChildren([
     adminCarsRoute,
     adminCarNewRoute,
     adminCarEditRoute,
+    adminBlocketRoute,
     adminBidsRoute,
     adminInboxRoute,
     adminBookingsRoute,

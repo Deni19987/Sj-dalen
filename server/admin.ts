@@ -19,6 +19,8 @@ import {
   type BlobStore,
   type Query,
 } from "./http";
+import { standardEquipment, writeCarAd } from "./ai";
+import { lookupVehicle, type Env } from "./vehicle-lookup";
 
 const DAY = 24 * 60 * 60 * 1000;
 const IMAGE_ID_RE = /^[a-f0-9]{24}$/;
@@ -33,6 +35,8 @@ export interface AdminDeps {
   query: Query;
   blobs: BlobStore;
   auth: AuthConfig;
+  /** Miljövariabler för AI och hämtning från Transportstyrelsen. */
+  env: Env;
 }
 
 /* ------------------------------------------------------------------ */
@@ -136,7 +140,25 @@ function carValues(b: Record<string, any>) {
     sold_price: status === "sold" ? int(b.soldPrice, "slutpris", 0, 100_000_000) : optInt(b.soldPrice, "slutpris", 0, 100_000_000),
     images,
     admin_note: text(b.adminNote, "intern anteckning", 2000),
+    reg_number: (text(b.regNumber, "registreringsnummer", 10)).toUpperCase().replace(/\s/g, ""),
+    facts: JSON.stringify(carFacts(b.facts)),
   };
+}
+
+/** Extra uppgifter om bilen (för AI-texten och Blocket). Visas bara i admin. */
+const FACT_TEXT = ["owners", "firstRegistered", "lastInspection", "nextInspection", "horsepower", "keys", "serviceHistory", "drive", "tires", "trim"] as const;
+function carFacts(v: unknown) {
+  const f = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const k of FACT_TEXT) {
+    const s = typeof f[k] === "string" ? (f[k] as string).trim() : "";
+    if (s.length > 100) throw new HttpError(400, "För lång text i bilens uppgifter.");
+    if (s) out[k] = s;
+  }
+  out.equipment = strList(f.equipment, "utrustning", { maxItems: 120, max: 60 });
+  out.standardEquipment = strList(f.standardEquipment, "standardutrustning", { maxItems: 120, max: 60 });
+  out.notes = text(f.notes, "anteckningar till AI", 4000);
+  return out;
 }
 
 const CAR_CAST: Record<string, string> = {
@@ -144,6 +166,7 @@ const CAR_CAST: Record<string, string> = {
   things_to_note: "::text[]",
   images: "::text[]",
   ends_at: "::timestamptz",
+  facts: "::jsonb",
 };
 
 /* ------------------------------------------------------------------ */
@@ -206,6 +229,23 @@ function settingsValue(b: Record<string, any>) {
 /* Router                                                              */
 /* ------------------------------------------------------------------ */
 
+// Nya kolumner läggs till automatiskt så att sajten fungerar även om db/schema.sql inte körts om.
+let schemaReady: Promise<unknown> | null = null;
+export function ensureSchema(query: Query) {
+  schemaReady ??= (async () => {
+    const cols = await query(
+      "select column_name from information_schema.columns where table_schema = 'public' and table_name = 'cars' and column_name in ('reg_number', 'facts')",
+    );
+    if (cols.length === 2) return;
+    await query("alter table public.cars add column if not exists reg_number text not null default ''");
+    await query("alter table public.cars add column if not exists facts jsonb not null default '{}'");
+  })().catch((err) => {
+    schemaReady = null;
+    throw err;
+  });
+  return schemaReady;
+}
+
 export async function handleAdmin(req: Request, path: string, deps: AdminDeps): Promise<Response> {
   const { query } = deps;
   const method = req.method;
@@ -227,6 +267,7 @@ export async function handleAdmin(req: Request, path: string, deps: AdminDeps): 
   if (!(await verifyToken(deps.auth, bearer(req)))) throw new HttpError(401, "Du är utloggad. Logga in igen.");
 
   const route = `${method} ${section}${id ? "/:id" : ""}${sub ? `/${sub}` : ""}`;
+  if (section === "cars") await ensureSchema(query);
 
   switch (route) {
     case "GET session":
@@ -272,6 +313,28 @@ export async function handleAdmin(req: Request, path: string, deps: AdminDeps): 
         order by created_at desc limit 16`);
 
       return json({ stats, bidsPerDay, activity }, 200, NO_CACHE);
+    }
+
+    /* ---------------- Annonshjälp ---------------- */
+    case "POST vehicle-lookup": {
+      const b = await body(req);
+      return json(await lookupVehicle(deps.env, str(b.regNumber, "registreringsnummer", { max: 12 })!), 200, NO_CACHE);
+    }
+
+    case "POST ai-ad": {
+      const b = await body(req);
+      if (JSON.stringify(b).length > 20_000) throw new HttpError(400, "För mycket text.");
+      if (!str(b.make, "märke", { max: 60, optional: true }) || !str(b.model, "modell", { max: 60, optional: true }))
+        throw new HttpError(400, "Fyll i märke och modell först.");
+      return json(await writeCarAd(deps.env, b), 200, NO_CACHE);
+    }
+
+    case "POST ai-equipment": {
+      const b = await body(req);
+      if (JSON.stringify(b).length > 5_000) throw new HttpError(400, "För mycket text.");
+      if (!str(b.make, "märke", { max: 60, optional: true }) || !str(b.model, "modell", { max: 60, optional: true }))
+        throw new HttpError(400, "Fyll i märke och modell först.");
+      return json({ standard: await standardEquipment(deps.env, b) }, 200, NO_CACHE);
     }
 
     /* ---------------- Bilar ---------------- */
@@ -376,10 +439,10 @@ export async function handleAdmin(req: Request, path: string, deps: AdminDeps): 
           await query(
             `insert into cars (id, make, model, year, title, highlight, body_type, color_name, color_hex, mileage_km,
                                fuel, gearbox, inspected, condition_summary, highlights, things_to_note, description,
-                               start_price, min_increment, reserve_price, ends_at, status, images, admin_note)
+                               start_price, min_increment, reserve_price, ends_at, status, images, admin_note, facts)
              select $2, make, model, year, title || ' (kopia)', highlight, body_type, color_name, color_hex, mileage_km,
                     fuel, gearbox, inspected, condition_summary, highlights, things_to_note, description,
-                    start_price, min_increment, reserve_price, now() + interval '7 days', 'draft', $3::text[], admin_note
+                    start_price, min_increment, reserve_price, now() + interval '7 days', 'draft', $3::text[], admin_note, facts
                from cars where id = $1`,
             [id, newId, copies],
           );

@@ -78,7 +78,7 @@ export function localApi(env: Record<string, string>): Plugin {
         try {
           // Laddas via Vite så att ändringar i server/ slår igenom utan omstart.
           const { createHandler } = (await server.ssrLoadModule("/server/handler.ts")) as typeof import("./handler");
-          const handle = createHandler(query, { blobs, auth: { password, secret: env.ADMIN_SECRET } });
+          const handle = createHandler(query, { blobs, auth: { password, secret: env.ADMIN_SECRET }, env });
           await sendResponse(res, await handle(await toRequest(req)));
         } catch (err) {
           next(err);
