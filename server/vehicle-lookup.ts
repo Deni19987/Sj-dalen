@@ -42,10 +42,37 @@ const SENDER = "fordonsuppgifter@transportstyrelsen.se";
 let cachedToken: string | null = null;
 let tokenExpiresAt = 0;
 
+/** Miljövariabel utan mellanslag, radbrytningar och citattecken som ofta följer med när man kopierar. */
+const envValue = (env: Env, key: string) => env[key]?.trim().replace(/^["']|["']$/g, "").trim() || undefined;
+
+/** Googles felkod → förklaring på svenska. */
+function tokenErrorMessage(status: number, body: string): string {
+  let code = "";
+  try {
+    code = (JSON.parse(body) as { error?: string }).error ?? "";
+  } catch {
+    /* inget JSON-svar */
+  }
+  const base = "Kunde inte logga in i Gmail-inkorgen för registerutdrag";
+  switch (code) {
+    case "invalid_grant":
+      return `${base}: Google säger att GMAIL_REFRESH_TOKEN är ogiltig eller har gått ut (invalid_grant). Skapa en ny refresh token och lägg in den i Netlify. Om Google-appen står i läget "Testing" går token ut efter 7 dagar – sätt den till "In production".`;
+    case "invalid_client":
+      return `${base}: Google känner inte igen GMAIL_CLIENT_ID eller GMAIL_CLIENT_SECRET (invalid_client). Kontrollera att båda är kopierade exakt och hör till samma Google-projekt.`;
+    case "unauthorized_client":
+      return `${base}: refresh token är skapad med ett annat klient-ID än GMAIL_CLIENT_ID (unauthorized_client). Skapa en ny refresh token med samma klient-ID och hemlighet som ligger i Netlify.`;
+    default:
+      return `${base} (Google svarade ${status}${code ? ` ${code}` : ""}). Kontrollera GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET och GMAIL_REFRESH_TOKEN i Netlify.`;
+  }
+}
+
 async function accessToken(env: Env): Promise<string> {
-  if (env.GMAIL_ACCESS_TOKEN) return env.GMAIL_ACCESS_TOKEN;
+  const direct = envValue(env, "GMAIL_ACCESS_TOKEN");
+  if (direct) return direct;
   if (cachedToken && Date.now() < tokenExpiresAt - 30_000) return cachedToken;
-  const { GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN } = env;
+  const GMAIL_CLIENT_ID = envValue(env, "GMAIL_CLIENT_ID");
+  const GMAIL_CLIENT_SECRET = envValue(env, "GMAIL_CLIENT_SECRET");
+  const GMAIL_REFRESH_TOKEN = envValue(env, "GMAIL_REFRESH_TOKEN");
   if (!GMAIL_CLIENT_ID || !GMAIL_CLIENT_SECRET || !GMAIL_REFRESH_TOKEN)
     throw new HttpError(503, "Hämtning från Transportstyrelsen är inte aktiverad. Lägg in GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET och GMAIL_REFRESH_TOKEN i Netlify (samma som i Carflow).");
   const res = await fetch(TOKEN_URL, {
@@ -59,8 +86,9 @@ async function accessToken(env: Env): Promise<string> {
     }),
   });
   if (!res.ok) {
-    console.error("Gmail token", res.status, await res.text().catch(() => ""));
-    throw new HttpError(502, "Kunde inte logga in i inkorgen för registerutdrag. Kontrollera Gmail-inställningarna.");
+    const text = await res.text().catch(() => "");
+    console.error("Gmail token", res.status, text);
+    throw new HttpError(502, tokenErrorMessage(res.status, text));
   }
   const j = (await res.json()) as { access_token: string; expires_in: number };
   cachedToken = j.access_token;
@@ -72,8 +100,12 @@ async function gmail(env: Env, path: string) {
   const res = await fetch(`${API_BASE}${path}`, { headers: { authorization: `Bearer ${await accessToken(env)}` } });
   if (!res.ok) {
     console.error("Gmail", path, res.status, await res.text().catch(() => ""));
+    if (res.status === 401 && envValue(env, "GMAIL_ACCESS_TOKEN"))
+      throw new HttpError(502, "GMAIL_ACCESS_TOKEN i Netlify har gått ut (den gäller bara en timme). Ta bort den – då används GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET och GMAIL_REFRESH_TOKEN i stället.");
+    if (res.status === 403)
+      throw new HttpError(502, "Google nekar läsning av inkorgen (403). Kontrollera att Gmail API är aktiverat i Google-projektet och att refresh token har behörighet att läsa mejl (gmail.readonly).");
     // Ett misslyckat anrop får aldrig se ut som "mejlet har inte kommit än".
-    throw new HttpError(502, "Kunde inte läsa inkorgen för registerutdrag. Kontrollera Gmail-anslutningen.");
+    throw new HttpError(502, `Kunde inte läsa inkorgen för registerutdrag (Google svarade ${res.status}). Kontrollera Gmail-anslutningen.`);
   }
   return res.json() as Promise<any>;
 }
