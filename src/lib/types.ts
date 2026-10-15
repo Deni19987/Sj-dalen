@@ -51,6 +51,10 @@ export interface Car {
   images: string[];
   /** Utrustning (se lib/equipment.ts). */
   equipment?: string[];
+  /** Motor, hästkrafter och drivning (om de är ifyllda). */
+  engine?: string;
+  horsepower?: string;
+  drive?: string;
   /** Om bilen har ett reservationspris och om det är uppnått (beloppet visas aldrig publikt). */
   hasReserve?: boolean;
   reserveMet?: boolean;

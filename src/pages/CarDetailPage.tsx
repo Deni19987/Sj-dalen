@@ -12,9 +12,12 @@ import {
   Palette,
   Settings2,
   ShieldCheck,
+  CarFront,
   Check,
   ChevronDown,
+  Cog,
   ListChecks,
+  Route,
 } from "lucide-react";
 import { Badge } from "../components/Badge";
 import { groupEquipment } from "../lib/equipment";
@@ -29,6 +32,7 @@ import type { BidResult, Car } from "../lib/types";
 import { useWatch } from "../lib/watchlist";
 
 const route = getRouteApi("/auktion/$id");
+const BODY_LABEL: Record<string, string> = { kombi: "Kombi", sedan: "Sedan", halvkombi: "Halvkombi", suv: "SUV", skåpbil: "Skåpbil" };
 const INPUT = "w-full rounded-lg border border-graphite-200 px-3 py-2.5 outline-none focus:border-blue-500";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // Budgivarens uppgifter sparas i webbläsaren så att man slipper fylla i dem vid nästa bud.
@@ -194,8 +198,11 @@ export function CarDetailPage() {
     { icon: Gauge, label: "Mätarställning", value: formatKm(car.mileageKm) },
     { icon: Fuel, label: "Bränsle", value: car.fuel },
     { icon: Settings2, label: "Växellåda", value: car.gearbox },
+    { icon: Cog, label: "Motor", value: [car.engine, car.horsepower && `${car.horsepower} hk`].filter(Boolean).join(", ") },
+    { icon: CarFront, label: "Kaross", value: BODY_LABEL[car.bodyType] ?? "" },
+    { icon: Route, label: "Drivning", value: car.drive ?? "" },
     { icon: Palette, label: "Färg", value: car.colorName },
-  ];
+  ].filter((s) => s.value);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
@@ -206,8 +213,9 @@ export function CarDetailPage() {
         <ChevronLeft size={16} /> Till alla bilar
       </Link>
 
-      <div className="mt-4 grid gap-10 lg:grid-cols-2">
-        <div>
+      {/* Mobil: bilder → bud → detaljer. Dator: bilder och detaljer till vänster, budrutan fast till höger. */}
+      <div className="mt-4 grid gap-8 lg:grid-cols-[minmax(0,1fr)_380px] lg:gap-10">
+        <div className="lg:col-start-1 lg:row-start-1">
           <CarGallery
             car={car}
             badge={
@@ -218,7 +226,76 @@ export function CarDetailPage() {
               )
             }
           />
-          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        </div>
+
+        <aside className="lg:col-start-2 lg:row-span-2 lg:row-start-1">
+          <div className="space-y-6 lg:sticky lg:top-24">
+            <div className="rounded-2xl bg-white p-6 shadow-card">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h1 className="font-display text-2xl font-extrabold uppercase leading-tight tracking-tight text-graphite-900">
+                    {car.title}
+                  </h1>
+                  {car.highlight && <p className="mt-2 text-sm text-graphite-600">{car.highlight}</p>}
+                </div>
+                <button
+                  type="button"
+                  onClick={toggleWatch}
+                  aria-pressed={watched}
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-graphite-50"
+                  aria-label={watched ? "Ta bort bevakning" : "Bevaka bil"}
+                >
+                  <Heart size={19} className={cn(watched ? "fill-blue-500 text-blue-500" : "text-graphite-400")} />
+                </button>
+              </div>
+              {car.inspected && (
+                <Badge variant="dark" icon={<ShieldCheck size={13} />} className="mt-3">
+                  Verkstadsbesiktigad
+                </Badge>
+              )}
+
+              <div className="mt-5 flex flex-wrap items-end justify-between gap-4 border-t border-graphite-100 pt-5">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-graphite-400">
+                    {car.status === "sold" ? "Såldes för" : "Högsta bud"}
+                  </p>
+                  <p className="font-display text-3xl font-extrabold text-graphite-900">{formatPrice(price)}</p>
+                  <p className="text-xs text-graphite-400">Utropspris {formatPrice(car.startPrice)}</p>
+                </div>
+                {!ended && (
+                  <div className="text-right">
+                    <Countdown endsAt={car.endsAt} />
+                    {car.extended && (
+                      <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-blue-600">Förlängd efter sent bud</p>
+                    )}
+                  </div>
+                )}
+              </div>
+              {car.status !== "sold" && car.hasReserve && (
+                <p
+                  className={cn(
+                    "mt-3 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold",
+                    car.reserveMet ? "bg-blue-50 text-blue-700" : "bg-graphite-100 text-graphite-500",
+                  )}
+                >
+                  {car.reserveMet ? "Reservationspriset är uppnått" : "Reservationspriset är inte uppnått"}
+                </p>
+              )}
+              {!ended && (
+                <div className="mt-5">
+                  <BidForm key={car.id} car={car} />
+                </div>
+              )}
+              <div className="mt-6 border-t border-graphite-100 pt-5">
+                <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-graphite-500">Budhistorik</h2>
+                <BidHistory car={car} />
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        <div className="space-y-6 lg:col-start-1 lg:row-start-2">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {specs.map((s) => (
               <div key={s.label} className="rounded-xl bg-white p-4 shadow-card">
                 <s.icon size={16} className="text-blue-500" />
@@ -227,101 +304,60 @@ export function CarDetailPage() {
               </div>
             ))}
           </div>
-        </div>
 
-        <div>
-          <div className="flex items-start justify-between gap-3">
-            <h1 className="font-display text-2xl font-extrabold uppercase tracking-tight text-graphite-900 sm:text-3xl">
-              {car.title}
-            </h1>
-            <button
-              type="button"
-              onClick={toggleWatch}
-              aria-pressed={watched}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white shadow-soft"
-              aria-label={watched ? "Ta bort bevakning" : "Bevaka bil"}
-            >
-              <Heart size={19} className={cn(watched ? "fill-blue-500 text-blue-500" : "text-graphite-400")} />
-            </button>
-          </div>
-          {car.inspected && (
-            <Badge variant="dark" icon={<ShieldCheck size={13} />} className="mt-3">
-              Verkstadsbesiktigad
-            </Badge>
+          {car.description.trim() && (
+            <section className="rounded-2xl bg-white p-6 shadow-card">
+              <h2 className="font-display text-lg font-bold text-graphite-900">Om bilen</h2>
+              <div className="mt-3 space-y-3 leading-relaxed text-graphite-600">
+                {car.description
+                  .split(/\n\s*\n/)
+                  .map((p) => p.trim())
+                  .filter(Boolean)
+                  .map((p, i) => (
+                    <p key={i} className="whitespace-pre-line">
+                      {p}
+                    </p>
+                  ))}
+              </div>
+            </section>
           )}
-          <p className="mt-4 text-graphite-600">{car.description}</p>
 
-          <div className="mt-6 rounded-2xl bg-white p-6 shadow-card">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <p className="text-xs uppercase tracking-wide text-graphite-400">
-                  {car.status === "sold" ? "Såldes för" : "Högsta bud"}
-                </p>
-                <p className="font-display text-3xl font-extrabold text-graphite-900">{formatPrice(price)}</p>
-                <p className="text-xs text-graphite-400">Utropspris {formatPrice(car.startPrice)}</p>
-                {car.status !== "sold" && car.hasReserve && (
-                  <p
-                    className={cn(
-                      "mt-2 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold",
-                      car.reserveMet ? "bg-blue-50 text-blue-700" : "bg-graphite-100 text-graphite-500",
-                    )}
-                  >
-                    {car.reserveMet ? "Reservationspriset är uppnått" : "Reservationspriset är inte uppnått"}
-                  </p>
+          {(car.conditionSummary || car.highlights.length > 0 || car.thingsToNote.length > 0) && (
+            <section className="rounded-2xl bg-white p-6 shadow-card">
+              <h2 className="flex items-center gap-2 font-display text-lg font-bold text-graphite-900">
+                <ShieldCheck size={18} className="text-blue-500" /> Skick &amp; kontrollerat av oss
+              </h2>
+              {car.conditionSummary && <p className="mt-1 text-sm text-graphite-500">{car.conditionSummary}</p>}
+              <div className="mt-4 grid gap-6 sm:grid-cols-2">
+                {car.highlights.length > 0 && (
+                  <div>
+                    <h3 className="text-xs font-bold uppercase tracking-wide text-graphite-400">Höjdpunkter</h3>
+                    <ul className="mt-2 space-y-2">
+                      {car.highlights.map((h) => (
+                        <li key={h} className="flex items-start gap-2 text-sm text-graphite-700">
+                          <CircleCheck size={16} className="mt-0.5 shrink-0 text-blue-500" />
+                          {h}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {car.thingsToNote.length > 0 && (
+                  <div>
+                    <h3 className="text-xs font-bold uppercase tracking-wide text-graphite-400">Att känna till</h3>
+                    <ul className="mt-2 space-y-2">
+                      {car.thingsToNote.map((t) => (
+                        <li key={t} className="flex items-start gap-2 text-sm text-graphite-700">
+                          <Info size={16} className="mt-0.5 shrink-0 text-graphite-400" />
+                          {t}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 )}
               </div>
-              {!ended && (
-                <div className="text-right">
-                  <Countdown endsAt={car.endsAt} />
-                  {car.extended && (
-                    <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-blue-600">
-                      Förlängd efter sent bud
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-            {!ended && (
-              <div className="mt-5">
-                <BidForm key={car.id} car={car} />
-              </div>
-            )}
-            <div className="mt-6 border-t border-graphite-100 pt-5">
-              <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-graphite-500">Budhistorik</h2>
-              <BidHistory car={car} />
-            </div>
-          </div>
-
-          <div className="mt-6 rounded-2xl border border-graphite-200 p-6">
-            <h2 className="flex items-center gap-2 font-display font-bold text-graphite-900">
-              <ShieldCheck size={18} className="text-blue-500" /> Skick &amp; kontrollerat av oss
-            </h2>
-            <p className="mt-1 text-sm text-graphite-500">{car.conditionSummary}</p>
-            {car.highlights.length > 0 && (
-              <h3 className="mt-5 text-xs font-bold uppercase tracking-wide text-graphite-400">Höjdpunkter</h3>
-            )}
-            <ul className="mt-2 space-y-2">
-              {car.highlights.map((h) => (
-                <li key={h} className="flex items-start gap-2 text-sm text-graphite-700">
-                  <CircleCheck size={16} className="mt-0.5 shrink-0 text-blue-500" />
-                  {h}
-                </li>
-              ))}
-            </ul>
-            {car.thingsToNote.length > 0 && (
-              <>
-                <h3 className="mt-5 text-xs font-bold uppercase tracking-wide text-graphite-400">Att känna till</h3>
-                <ul className="mt-2 space-y-2">
-                  {car.thingsToNote.map((t) => (
-                    <li key={t} className="flex items-start gap-2 text-sm text-graphite-700">
-                      <Info size={16} className="mt-0.5 shrink-0 text-graphite-400" />
-                      {t}
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-          </div>
+            </section>
+          )}
 
           <EquipmentList items={car.equipment ?? []} />
         </div>
@@ -339,8 +375,8 @@ function EquipmentList({ items }: { items: string[] }) {
   const shown = collapsible && !open ? groups.slice(0, 2) : groups;
 
   return (
-    <div className="mt-6 rounded-2xl border border-graphite-200 p-6">
-      <h2 className="flex items-center gap-2 font-display font-bold text-graphite-900">
+    <section className="rounded-2xl bg-white p-6 shadow-card">
+      <h2 className="flex items-center gap-2 font-display text-lg font-bold text-graphite-900">
         <ListChecks size={18} className="text-blue-500" /> Utrustning
         <span className="text-sm font-normal text-graphite-400">({items.length})</span>
       </h2>
@@ -348,7 +384,7 @@ function EquipmentList({ items }: { items: string[] }) {
         {shown.map((g) => (
           <div key={g.name}>
             <h3 className="text-xs font-bold uppercase tracking-wide text-graphite-400">{g.name}</h3>
-            <ul className="mt-2 grid grid-cols-1 gap-x-4 gap-y-1.5 sm:grid-cols-2">
+            <ul className="mt-2 grid grid-cols-1 gap-x-4 gap-y-1.5 sm:grid-cols-2 md:grid-cols-3">
               {g.items.map((item) => (
                 <li key={item} className="flex items-start gap-2 text-sm text-graphite-700">
                   <Check size={15} className="mt-0.5 shrink-0 text-blue-500" strokeWidth={2.5} />
@@ -370,6 +406,6 @@ function EquipmentList({ items }: { items: string[] }) {
           <ChevronDown size={16} className={cn("transition-transform", open && "rotate-180")} />
         </button>
       )}
-    </div>
+    </section>
   );
 }

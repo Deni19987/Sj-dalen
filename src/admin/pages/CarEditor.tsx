@@ -7,6 +7,7 @@ import type { BodyType, Car, CarStatus } from "../../lib/types";
 import { lookupVehicle, suggestStandardEquipment, useAdminCars, useDeleteBid, useSaveCar, writeAdWithAi, type AdminCar, type CarFacts, type CarInput, type VehicleData } from "../api";
 import { BlocketSheet } from "../BlocketSheet";
 import { EquipmentPicker } from "../EquipmentPicker";
+import { MAKES } from "../../lib/vehicle";
 import { useCarActions } from "../CarActions";
 import { bidsNewestFirst } from "../../lib/auction";
 import { carState, endsInDays, fmtDateTime, kr, num, relativeTime, STATE_LABEL, telHref, toLocalInput } from "../helpers";
@@ -24,7 +25,6 @@ const BODY_TYPES: { value: BodyType; label: string }[] = [
 ];
 const FUELS = ["Bensin", "Diesel", "El", "Hybrid", "Laddhybrid", "Gas", "E85"];
 const GEARBOXES = ["Manuell", "Automat"];
-const MAKES = ["Audi", "BMW", "Citroën", "Ford", "Honda", "Hyundai", "Kia", "Mazda", "Mercedes-Benz", "Mitsubishi", "Nissan", "Opel", "Peugeot", "Renault", "Saab", "Seat", "Skoda", "Subaru", "Suzuki", "Tesla", "Toyota", "Volkswagen", "Volvo"];
 const SERVICE_HISTORY = ["Full servicehistorik", "Delvis servicehistorik", "Servicebok saknas"];
 const TS_URL = "https://fordon-fu-regnr.transportstyrelsen.se/";
 // Inkorgen som registerutdragen skickas till (samma som Carflow). Kan ändras med VITE_VEHICLE_LOOKUP_INBOX.
@@ -223,6 +223,8 @@ function fromVehicle(v: VehicleData, f: Form): Form {
     mileageKm: pick(v.mileageKm, f.mileageKm),
     facts: {
       ...f.facts,
+      engine: pick(v.engine, f.facts.engine ?? ""),
+      trim: pick(v.trim, f.facts.trim ?? ""),
       owners: pick(v.owners, f.facts.owners ?? ""),
       firstRegistered: pick(v.firstRegistered, f.facts.firstRegistered ?? ""),
       lastInspection: pick(v.lastInspection, f.facts.lastInspection ?? ""),
@@ -240,6 +242,7 @@ function vehicleInput(f: Form) {
   return clean({
     make: f.make.trim(),
     model: f.model.trim(),
+    motor: f.facts.engine,
     utforande: f.facts.trim,
     arsmodell: f.year.trim(),
     kaross: BODY_TYPES.find((b) => b.value === f.bodyType)?.label,
@@ -644,7 +647,7 @@ function CarEditor({ car }: { car?: AdminCar }) {
           </Section>
 
           <Section title="Grunduppgifter">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <Field label="Märke" hint={err("make")}>
                 <Input list="car-makes" value={form.make} onChange={(e) => set("make", e.target.value)} placeholder="Volvo" className={cn(err("make") && "ring-2 ring-ios-red/60")} />
                 <datalist id="car-makes">
@@ -658,6 +661,9 @@ function CarEditor({ car }: { car?: AdminCar }) {
               </Field>
               <Field label="Årsmodell" hint={err("year")}>
                 <Input type="number" inputMode="numeric" value={form.year} onChange={(e) => set("year", e.target.value)} placeholder="2016" className={cn(err("year") && "ring-2 ring-ios-red/60")} />
+              </Field>
+              <Field label="Motor">
+                <Input value={form.facts.engine ?? ""} onChange={(e) => setFact("engine", e.target.value)} placeholder="1.4 TSI" maxLength={40} />
               </Field>
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -714,8 +720,8 @@ function CarEditor({ car }: { car?: AdminCar }) {
 
           <Section title="Mer om bilen" description="Ju mer du fyller i, desto bättre blir AI-texten. Allt är valfritt och syns inte på webbplatsen.">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <Field label="Utförande / motor">
-                <Input value={form.facts.trim ?? ""} onChange={(e) => setFact("trim", e.target.value)} placeholder="D4 Momentum" maxLength={100} />
+              <Field label="Utförande">
+                <Input value={form.facts.trim ?? ""} onChange={(e) => setFact("trim", e.target.value)} placeholder="Momentum" maxLength={100} />
               </Field>
               <Field label="Hästkrafter">
                 <Input inputMode="numeric" value={form.facts.horsepower ?? ""} onChange={(e) => setFact("horsepower", e.target.value)} suffix="hk" placeholder="181" maxLength={10} />

@@ -146,7 +146,7 @@ function carValues(b: Record<string, any>) {
 }
 
 /** Extra uppgifter om bilen (för AI-texten och Blocket). Visas bara i admin. */
-const FACT_TEXT = ["owners", "firstRegistered", "lastInspection", "nextInspection", "horsepower", "keys", "serviceHistory", "drive", "tires", "trim"] as const;
+const FACT_TEXT = ["engine", "owners", "firstRegistered", "lastInspection", "nextInspection", "horsepower", "keys", "serviceHistory", "drive", "tires", "trim"] as const;
 function carFacts(v: unknown) {
   const f = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
   const out: Record<string, unknown> = {};

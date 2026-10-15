@@ -77,7 +77,7 @@ export function blocketRows(car: CarInput, price: string): [string, string][] {
     ["Rubrik", car.title],
     ["Pris (kr)", price.replace(/\s/g, "")],
     ["Märke", car.make],
-    ["Modell", [car.model, car.facts.trim].filter(Boolean).join(" ")],
+    ["Modell", [car.model, car.facts.engine, car.facts.trim].filter(Boolean).join(" ")],
     ["Modellår", Number.isFinite(car.year) ? String(car.year) : ""],
     ["Miltal", Number.isFinite(mil) ? String(mil) : ""],
     ["Bränsle", car.fuel],
