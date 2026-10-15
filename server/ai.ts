@@ -2,7 +2,7 @@
 //
 // Miljövariabler:
 //   GEMINI_API_KEY   – krävs
-//   GEMINI_MODEL     – valfri, standard "gemini-2.5-flash"
+//   GEMINI_MODEL     – valfri; annars "gemini-flash-latest" (Googles senaste Flash-modell) med reserver
 
 import { HttpError } from "./http";
 import { ALL_EQUIPMENT } from "../src/lib/equipment";
@@ -55,6 +55,27 @@ const clip = (s: unknown, max: number) => (typeof s === "string" ? s.replace(/\*
 const clipList = (v: unknown, items: number, max: number) =>
   Array.isArray(v) ? v.map((x) => clip(x, max)).filter(Boolean).slice(0, items) : [];
 
+/** Googles felsvar → begripligt meddelande på svenska (med Googles egen text). */
+function googleError(status: number, body: string): string {
+  let msg = "";
+  let reason = "";
+  try {
+    const e = (JSON.parse(body) as { error?: { message?: string; status?: string; details?: { reason?: string }[] } }).error;
+    msg = e?.message ?? "";
+    reason = e?.details?.find((d) => d.reason)?.reason ?? e?.status ?? "";
+  } catch {
+    /* inget JSON-svar */
+  }
+  const google = msg ? ` Google svarade: "${msg.slice(0, 200)}"` : ` (Google svarade ${status})`;
+  if (status === 429) return "AI:n är överbelastad eller kvoten är slut just nu. Försök igen om en stund." + google;
+  if (reason === "API_KEY_INVALID" || /api key not valid/i.test(msg))
+    return "GEMINI_API_KEY i Netlify är inte giltig. Kopiera nyckeln igen från Google AI Studio (aistudio.google.com → Get API key).";
+  if (status === 403)
+    return "Google nekar AI-nyckeln. Den kan vara begränsad till en annan webbplats eller sakna behörighet till Gemini API." + google;
+  if (status === 404) return "Ingen av AI-modellerna är tillgänglig för nyckeln." + google;
+  return "AI:n kunde inte svara." + google;
+}
+
 /** Anropar Gemini och returnerar svaret som JSON enligt `schema`. */
 export async function gemini(
   env: Env,
@@ -66,28 +87,37 @@ export async function gemini(
 ): Promise<Record<string, unknown>> {
   const key = env.GEMINI_API_KEY?.trim().replace(/^["']|["']$/g, "");
   if (!key) throw new HttpError(503, "AI är inte aktiverat. Lägg in GEMINI_API_KEY i Netlify (samma nyckel som i Carflow).");
-  const model = env.GEMINI_MODEL || "gemini-2.5-flash";
+  // Google byter ut modeller ofta. "gemini-flash-latest" pekar alltid på den senaste Flash-modellen;
+  // de andra är reserver om en modell inte finns eller inte är tillgänglig för nyckeln.
+  const models = [...new Set([env.GEMINI_MODEL?.trim(), "gemini-flash-latest", "gemini-3.8-flash", "gemini-3.5-flash-lite"].filter(Boolean) as string[])];
 
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-    method: "POST",
-    signal: AbortSignal.timeout(timeoutMs),
-    headers: { "content-type": "application/json", "x-goog-api-key": key },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: system }] },
-      contents: [{ role: "user", parts: [{ text: user }] }],
-      generationConfig: {
-        temperature,
-        responseMimeType: "application/json",
-        responseSchema: schema,
-        // Snabbare svar – inget långt "tänkande" behövs.
-        ...(model.startsWith("gemini-2.5-flash") ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
-      },
-    }),
-  });
-  if (!res.ok) {
-    console.error("Gemini", res.status, await res.text().catch(() => ""));
-    throw new HttpError(502, res.status === 429 ? "AI:n är överbelastad just nu. Försök igen om en stund." : "AI:n kunde inte svara. Försök igen.");
+  let res: Response | null = null;
+  let lastError = "";
+  for (const model of models) {
+    try {
+      res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+        method: "POST",
+        signal: AbortSignal.timeout(timeoutMs),
+        headers: { "content-type": "application/json", "x-goog-api-key": key },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: system }] },
+          contents: [{ role: "user", parts: [{ text: user }] }],
+          generationConfig: { temperature, responseMimeType: "application/json", responseSchema: schema },
+        }),
+      });
+    } catch (err) {
+      const timedOut = err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError");
+      throw new HttpError(504, timedOut ? "AI:n tog för lång tid på sig. Försök igen." : "Kunde inte nå AI-tjänsten. Försök igen.");
+    }
+    if (res.ok) break;
+    const body = await res.text().catch(() => "");
+    console.error("Gemini", model, res.status, body);
+    lastError = googleError(res.status, body);
+    // Modellen finns inte / är inte tillgänglig för nyckeln → prova nästa. Andra fel är samma för alla modeller.
+    if (res.status !== 404 && !((res.status === 403 || res.status === 400) && /model/i.test(body))) break;
   }
+  if (!res?.ok) throw new HttpError(502, lastError);
+
   const data = (await res.json()) as any;
   const raw = data?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join("") ?? "";
   try {
