@@ -219,8 +219,8 @@ export function makeModelEngine(fabrikat: string | null, handelsbeteckning: stri
   }
   // Handelsbeteckningen är modellen; annars det som stod efter märket.
   const modelText = (handelsbeteckning ?? rest).trim();
-  const { model, engine } = modelText ? splitModelEngine(modelText) : { model: null, engine: null };
-  return { make, model: model || null, engine: engine ?? engineFromVolume(firstInt(volume)) };
+  const { model, engine, trim } = modelText ? splitModelEngine(modelText) : { model: null, engine: null, trim: null };
+  return { make, model: model || null, engine: engine ?? engineFromVolume(firstInt(volume)), trim };
 }
 
 function parse(text: string, reg: string): Omit<VehicleData, "emailReceivedAt" | "readByAi"> {
@@ -233,7 +233,6 @@ function parse(text: string, reg: string): Omit<VehicleData, "emailReceivedAt" |
   return {
     regNumber: field(text, "Registreringsnummer")?.toUpperCase().replace(/\s/g, "") ?? reg,
     ...mme,
-    trim: null,
     year: year && year > 1900 && year < 2100 ? year : null,
     color: capitalize(field(text, "Färg")),
     fuel: capitalize(field(text, "Drivmedel") ?? field(text, "Bränsle")),
