@@ -4,8 +4,9 @@ import { ChevronLeft, ExternalLink, Gavel, Loader2, Mail, Phone, Plus, Search, S
 import { CarCard } from "../../components/CarCard";
 import { cn } from "../../lib/cn";
 import type { BodyType, Car, CarStatus } from "../../lib/types";
-import { lookupVehicle, useAdminCars, useDeleteBid, useSaveCar, writeAdWithAi, type AdminCar, type CarFacts, type CarInput, type VehicleData } from "../api";
+import { lookupVehicle, suggestStandardEquipment, useAdminCars, useDeleteBid, useSaveCar, writeAdWithAi, type AdminCar, type CarFacts, type CarInput, type VehicleData } from "../api";
 import { BlocketSheet } from "../BlocketSheet";
+import { EquipmentPicker } from "../EquipmentPicker";
 import { useCarActions } from "../CarActions";
 import { bidsNewestFirst } from "../../lib/auction";
 import { carState, endsInDays, fmtDateTime, kr, num, relativeTime, STATE_LABEL, telHref, toLocalInput } from "../helpers";
@@ -24,29 +25,6 @@ const BODY_TYPES: { value: BodyType; label: string }[] = [
 const FUELS = ["Bensin", "Diesel", "El", "Hybrid", "Laddhybrid", "Gas", "E85"];
 const GEARBOXES = ["Manuell", "Automat"];
 const MAKES = ["Audi", "BMW", "Citroën", "Ford", "Honda", "Hyundai", "Kia", "Mazda", "Mercedes-Benz", "Mitsubishi", "Nissan", "Opel", "Peugeot", "Renault", "Saab", "Seat", "Skoda", "Subaru", "Suzuki", "Tesla", "Toyota", "Volkswagen", "Volvo"];
-const EQUIPMENT = [
-  "Dragkrok",
-  "Navigation",
-  "Backkamera",
-  "Parkeringssensorer",
-  "Adaptiv farthållare",
-  "Farthållare",
-  "Apple CarPlay / Android Auto",
-  "Bluetooth",
-  "Klimatanläggning",
-  "Stolsvärme",
-  "Rattvärme",
-  "Motorvärmare",
-  "Kupévärmare",
-  "Läderklädsel",
-  "Elstolar",
-  "Keyless",
-  "LED-strålkastare",
-  "Panoramatak",
-  "Takräcke",
-  "Alufälgar",
-  "Sommar- och vinterdäck",
-];
 const SERVICE_HISTORY = ["Full servicehistorik", "Delvis servicehistorik", "Servicebok saknas"];
 const TS_URL = "https://fordon-fu-regnr.transportstyrelsen.se/";
 // Inkorgen som registerutdragen skickas till (samma som Carflow). Kan ändras med VITE_VEHICLE_LOOKUP_INBOX.
@@ -245,23 +223,31 @@ function fromVehicle(v: VehicleData, f: Form): Form {
   };
 }
 
-/** Allt vi vet om bilen, i ett format som AI:n förstår. Tomma fält skickas inte. */
-function aiInput(f: Form) {
-  const clean = (o: Record<string, unknown>) =>
-    Object.fromEntries(Object.entries(o).filter(([, v]) => v !== "" && v != null && !(Array.isArray(v) && v.length === 0)));
-  const km = n(f.mileageKm);
+const clean = (o: Record<string, unknown>) =>
+  Object.fromEntries(Object.entries(o).filter(([, v]) => v !== "" && v != null && !(Array.isArray(v) && v.length === 0)));
+
+/** Vilken bil det är – underlag för AI:ns standardutrustning. Tomma fält skickas inte. */
+function vehicleInput(f: Form) {
   return clean({
     make: f.make.trim(),
     model: f.model.trim(),
     utforande: f.facts.trim,
     arsmodell: f.year.trim(),
     kaross: BODY_TYPES.find((b) => b.value === f.bodyType)?.label,
-    farg: f.colorName.trim(),
-    matarstallning: Number.isFinite(km) ? `${km} km (${Math.round(km / 10)} mil)` : "",
     bransle: f.fuel,
     vaxellada: f.gearbox,
     hastkrafter: f.facts.horsepower,
     drivning: f.facts.drive,
+  });
+}
+
+/** Allt vi vet om bilen – underlag för AI:ns annonstext. */
+function aiInput(f: Form) {
+  const km = n(f.mileageKm);
+  return clean({
+    ...vehicleInput(f),
+    farg: f.colorName.trim(),
+    matarstallning: Number.isFinite(km) ? `${km} km (${Math.round(km / 10)} mil)` : "",
     antalAgare: f.facts.owners,
     iTrafikForstaGangen: f.facts.firstRegistered,
     senastBesiktigad: f.facts.lastInspection,
@@ -365,6 +351,7 @@ function CarEditor({ car }: { car?: AdminCar }) {
   const [lookupBusy, setLookupBusy] = useState(false);
   const [lookupInfo, setLookupInfo] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
+  const [equipBusy, setEquipBusy] = useState(false);
   const [blocketOpen, setBlocketOpen] = useState(false);
   const allowLeave = useRef(false);
 
@@ -387,15 +374,39 @@ function CarEditor({ car }: { car?: AdminCar }) {
 
   const set = useCallback(<K extends keyof Form>(k: K, v: Form[K]) => setForm((f) => ({ ...f, [k]: v })), []);
   const setFact = useCallback(<K extends keyof CarFacts>(k: K, v: CarFacts[K]) => setForm((f) => ({ ...f, facts: { ...f.facts, [k]: v } })), []);
-  const toggleEquipment = (item: string) =>
-    setFact("equipment", form.facts.equipment.includes(item) ? form.facts.equipment.filter((e) => e !== item) : [...form.facts.equipment, item]);
+
+  /** AI:n bockar i standardutrustningen. Det handlaren redan valt ligger kvar. */
+  async function onSuggestEquipment(f: Form = form, silent = false) {
+    if (!f.make.trim() || !f.model.trim()) {
+      if (!silent) toast("Fyll i minst märke och modell först.", "info");
+      return;
+    }
+    setEquipBusy(true);
+    try {
+      const { standard } = await suggestStandardEquipment(vehicleInput(f));
+      setForm((cur) => {
+        // Förra AI-förslaget som handlaren inte rört tas bort innan det nya läggs till.
+        const oldAi = new Set(cur.facts.standardEquipment ?? []);
+        const kept = cur.facts.equipment.filter((e) => !oldAi.has(e) || standard.includes(e));
+        return { ...cur, facts: { ...cur.facts, equipment: [...new Set([...kept, ...standard])], standardEquipment: standard } };
+      });
+      toast(standard.length ? `${standard.length} standardfunktioner ifyllda – kontrollera och lägg till tillval` : "AI:n hittade ingen säker standardutrustning", standard.length ? "success" : "info");
+    } catch (err) {
+      if (!silent) toast(err instanceof Error ? err.message : "Kunde inte hämta standardutrustning.", "error");
+    } finally {
+      setEquipBusy(false);
+    }
+  }
 
   async function onLookup() {
     if (!form.regNumber.trim()) return toast("Skriv registreringsnumret först.", "info");
     setLookupBusy(true);
     try {
       const v = await lookupVehicle(form.regNumber);
-      setForm((f) => fromVehicle(v, f));
+      const next = fromVehicle(v, form);
+      setForm(next);
+      // Fyll i standardutrustningen direkt om inget är valt än.
+      if (next.facts.equipment.length === 0) void onSuggestEquipment(next, true);
       const got = [v.make && v.model && `${v.make} ${v.model}`, v.year, v.mileageKm != null && `${num(v.mileageKm / 10)} mil`, v.owners != null && `${v.owners} ägare`]
         .filter(Boolean)
         .join(" · ");
@@ -650,6 +661,16 @@ function CarEditor({ car }: { car?: AdminCar }) {
             </div>
           </Section>
 
+          <Section title="Utrustning" description="Visas grupperad på annonsen och följer med till Blocket.">
+            <EquipmentPicker
+              value={form.facts.equipment}
+              standard={form.facts.standardEquipment ?? []}
+              onChange={(v) => setFact("equipment", v)}
+              onSuggest={() => onSuggestEquipment()}
+              suggesting={equipBusy}
+            />
+          </Section>
+
           <Section title="Mer om bilen" description="Ju mer du fyller i, desto bättre blir AI-texten. Allt är valfritt och syns inte på webbplatsen.">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <Field label="Utförande / motor">
@@ -689,27 +710,6 @@ function CarEditor({ car }: { car?: AdminCar }) {
                 <Input value={form.facts.tires ?? ""} onChange={(e) => setFact("tires", e.target.value)} placeholder="Nya vinterdäck på fälg" maxLength={100} />
               </Field>
             </div>
-            <Field label="Utrustning" hint="Tryck för att välja. Lägg till annat under ”Övrigt” nedan.">
-              <div className="flex flex-wrap gap-1.5">
-                {[...new Set([...EQUIPMENT, ...form.facts.equipment])].map((item) => {
-                  const on = form.facts.equipment.includes(item);
-                  return (
-                    <button
-                      key={item}
-                      type="button"
-                      aria-pressed={on}
-                      onClick={() => toggleEquipment(item)}
-                      className={cn(
-                        "rounded-full px-3 py-1.5 text-[13px] font-medium transition",
-                        on ? "bg-ios-blue text-white" : "bg-ios-fill2 text-ios-label hover:bg-ios-fill",
-                      )}
-                    >
-                      {item}
-                    </button>
-                  );
-                })}
-              </div>
-            </Field>
             <Field label="Övrigt till AI:n" hint="Skriv fritt och kortfattat – t.ex. vad som är gjort, extrautrustning, brister och historik.">
               <TextArea
                 value={form.facts.notes}

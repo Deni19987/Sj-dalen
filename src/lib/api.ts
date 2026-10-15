@@ -66,6 +66,7 @@ export const toCar = (r: Row): Car => ({
   soldPrice: r.sold_price ?? undefined,
   extended: r.extended,
   images: r.images ?? [],
+  equipment: r.equipment ?? [],
   hasReserve: r.has_reserve ?? undefined,
   reserveMet: r.reserve_met ?? undefined,
   bids: (r.bids ?? []).map(toBid),

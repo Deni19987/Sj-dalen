@@ -49,6 +49,8 @@ export interface Car {
   extended?: boolean;
   /** Bild-id:n i visningsordning (första = omslagsbild). Visas via imageUrl(). */
   images: string[];
+  /** Utrustning (se lib/equipment.ts). */
+  equipment?: string[];
   /** Om bilen har ett reservationspris och om det är uppnått (beloppet visas aldrig publikt). */
   hasReserve?: boolean;
   reserveMet?: boolean;

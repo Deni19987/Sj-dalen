@@ -103,6 +103,8 @@ export interface CarFacts {
   tires?: string;
   trim?: string;
   equipment: string[];
+  /** Det AI:n föreslog som standard på modellen (visas med en markering i checklistan). */
+  standardEquipment?: string[];
   notes: string;
 }
 
@@ -116,7 +118,7 @@ export interface AdminCar extends Car {
 }
 
 /** Fälten som skickas när en bil sparas. */
-export type CarInput = Omit<Car, "id" | "bids" | "extended" | "hasReserve" | "reserveMet"> & {
+export type CarInput = Omit<Car, "id" | "bids" | "extended" | "hasReserve" | "reserveMet" | "equipment"> & {
   reservePrice?: number | null;
   adminNote: string;
   regNumber: string;
@@ -155,6 +157,9 @@ export interface AdText {
 
 export const lookupVehicle = (regNumber: string) =>
   request<VehicleData>("/vehicle-lookup", { method: "POST", body: { regNumber } });
+
+export const suggestStandardEquipment = (car: Record<string, unknown>) =>
+  request<{ standard: string[] }>("/ai-equipment", { method: "POST", body: car });
 
 export const writeAdWithAi = (car: Record<string, unknown>) => request<AdText>("/ai-ad", { method: "POST", body: car });
 
@@ -243,6 +248,7 @@ const toAdminCar = (r: Row): AdminCar => ({
   adminNote: r.admin_note ?? "",
   regNumber: r.reg_number ?? "",
   facts: { equipment: [], notes: "", ...(r.facts ?? {}) },
+  equipment: r.facts?.equipment ?? [],
   createdAt: r.created_at,
   updatedAt: r.updated_at,
   bids: (r.bids ?? []).map(toBid),

@@ -1,8 +1,10 @@
 // "Lägg upp på Blocket": allt som behövs för Blocket-annonsen, i samma ordning som Blockets
 // formulär, med en kopieringsknapp per fält och en knapp som sparar alla bilder.
-import { useMemo, useState } from "react";
-import { Check, Copy, Download, ExternalLink } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Check, Copy, Download, ExternalLink, PanelRightOpen, RotateCcw } from "lucide-react";
 import { imageUrl } from "../lib/api";
+import { cn } from "../lib/cn";
+import { groupEquipment } from "../lib/equipment";
 import { num } from "./helpers";
 import type { CarInput } from "./api";
 import { Btn, Field, Input, Sheet, Toggle, useFeedback } from "./ui";
@@ -29,7 +31,7 @@ async function copyText(text: string) {
   }
 }
 
-function CopyRow({ label, value, multiline }: { label: string; value: string; multiline?: boolean }) {
+export function CopyRow({ label, value, multiline }: { label: string; value: string; multiline?: boolean }) {
   const [copied, setCopied] = useState(false);
   const { toast } = useFeedback();
   if (!value) return null;
@@ -60,23 +62,17 @@ function CopyRow({ label, value, multiline }: { label: string; value: string; mu
 export function blocketDescription(car: CarInput, auctionUrl?: string) {
   const parts = [car.description.trim()];
   if (car.highlights.length) parts.push(`Höjdpunkter:\n${car.highlights.map((h) => `• ${h}`).join("\n")}`);
-  if (car.facts.equipment.length) parts.push(`Utrustning:\n${car.facts.equipment.map((h) => `• ${h}`).join("\n")}`);
+  const groups = groupEquipment(car.facts.equipment);
+  if (groups.length) parts.push(`Utrustning:\n${groups.map((g) => `${g.name}: ${g.items.join(", ")}`).join("\n")}`);
   if (car.thingsToNote.length) parts.push(`Bra att veta:\n${car.thingsToNote.map((h) => `• ${h}`).join("\n")}`);
   if (auctionUrl) parts.push(`Bilen säljs på auktion hos Sjödalen Bilar. Se fler bilder och lägg ditt bud här: ${auctionUrl}`);
   return parts.filter(Boolean).join("\n\n");
 }
 
-export function BlocketSheet({ open, onClose, car, carId }: { open: boolean; onClose: () => void; car: CarInput; carId?: string }) {
-  const { toast } = useFeedback();
-  const [price, setPrice] = useState(() => String(car.reservePrice ?? car.startPrice ?? ""));
-  const [linkAuction, setLinkAuction] = useState(false);
-  const [saving, setSaving] = useState(false);
-
-  const auctionUrl = carId && typeof window !== "undefined" ? `${window.location.origin}/auktion/${carId}` : undefined;
-  const description = useMemo(() => blocketDescription(car, linkAuction ? auctionUrl : undefined), [car, linkAuction, auctionUrl]);
+/** Fälten i ungefär samma ordning som i Blockets formulär. */
+export function blocketRows(car: CarInput, price: string): [string, string][] {
   const mil = Number.isFinite(car.mileageKm) ? Math.round(car.mileageKm / 10) : NaN;
-
-  const rows: [string, string][] = [
+  return [
     ["Registreringsnummer", car.regNumber],
     ["Rubrik", car.title],
     ["Pris (kr)", price.replace(/\s/g, "")],
@@ -91,6 +87,100 @@ export function BlocketSheet({ open, onClose, car, carId }: { open: boolean; onC
     ["Hästkrafter", car.facts.horsepower ?? ""],
     ["Drivning", car.facts.drive ?? ""],
   ];
+}
+
+/* ------------------------------------------------------------------ */
+/* Avbockningslista för utrustningen                                    */
+/* ------------------------------------------------------------------ */
+
+/** Vilka punkter som är ikryssade på Blocket. Sparas i webbläsaren och delas med popup-fönstret. */
+function useDone(carId?: string) {
+  const key = `sjodalen-blocket-done-${carId ?? "ny"}`;
+  const read = useCallback((): string[] => {
+    try {
+      return JSON.parse(localStorage.getItem(key) ?? "[]");
+    } catch {
+      return [];
+    }
+  }, [key]);
+  const [done, setDone] = useState<string[]>(read);
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => e.key === key && setDone(read());
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [key, read]);
+  const update = (next: string[]) => {
+    setDone(next);
+    try {
+      localStorage.setItem(key, JSON.stringify(next));
+    } catch {
+      /* privat läge – listan gäller bara i det här fönstret */
+    }
+  };
+  return [done, update] as const;
+}
+
+export function EquipmentChecklist({ equipment, carId }: { equipment: string[]; carId?: string }) {
+  const [done, setDone] = useDone(carId);
+  const groups = groupEquipment(equipment);
+  if (!groups.length) return <p className="text-[14px] text-ios-secondary">Ingen utrustning vald ännu.</p>;
+  const doneSet = new Set(done.filter((d) => equipment.includes(d)));
+  const toggle = (item: string) => setDone(doneSet.has(item) ? [...doneSet].filter((d) => d !== item) : [...doneSet, item]);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <div className="h-2 flex-1 overflow-hidden rounded-full bg-ios-fill">
+          <div className="h-full rounded-full bg-ios-green transition-all" style={{ width: `${(doneSet.size / equipment.length) * 100}%` }} />
+        </div>
+        <span className="text-[13px] font-medium tabular-nums text-ios-secondary">
+          {doneSet.size} av {equipment.length}
+        </span>
+        {doneSet.size > 0 && (
+          <button type="button" onClick={() => setDone([])} className="flex items-center gap-1 text-[13px] text-ios-blue" title="Börja om">
+            <RotateCcw size={13} /> Börja om
+          </button>
+        )}
+      </div>
+      {groups.map((g) => (
+        <div key={g.name}>
+          <p className="mb-1 px-1 text-[12px] font-semibold uppercase tracking-wide text-ios-tertiary">{g.name}</p>
+          <div className="divide-y divide-black/[.05] overflow-hidden rounded-[12px] bg-white">
+            {g.items.map((item) => {
+              const on = doneSet.has(item);
+              return (
+                <button key={item} type="button" onClick={() => toggle(item)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition hover:bg-black/[.02]">
+                  <span className={cn("flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border-2 transition", on ? "border-ios-green bg-ios-green text-white" : "border-ios-separator")}>
+                    {on && <Check size={13} strokeWidth={3} />}
+                  </span>
+                  <span className={cn("text-[15px] transition", on && "text-ios-tertiary line-through")}>{item}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Öppnar checklistan i ett smalt eget fönster som kan ligga bredvid Blocket. */
+export function openBlocketWindow(carId: string) {
+  const w = 440;
+  const h = Math.min(window.screen.availHeight - 40, 900);
+  const left = Math.max(0, window.screen.availWidth - w - 20);
+  window.open(`/admin/bilar/${encodeURIComponent(carId)}/blocket`, "sjodalen-blocket", `popup,width=${w},height=${h},left=${left},top=20`);
+}
+
+export function BlocketSheet({ open, onClose, car, carId }: { open: boolean; onClose: () => void; car: CarInput; carId?: string }) {
+  const { toast } = useFeedback();
+  const [price, setPrice] = useState(() => String(car.reservePrice ?? car.startPrice ?? ""));
+  const [linkAuction, setLinkAuction] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const auctionUrl = carId && typeof window !== "undefined" ? `${window.location.origin}/auktion/${carId}` : undefined;
+  const description = useMemo(() => blocketDescription(car, linkAuction ? auctionUrl : undefined), [car, linkAuction, auctionUrl]);
+  const rows = blocketRows(car, price);
 
   const everything = [
     car.title,
@@ -99,6 +189,7 @@ export function BlocketSheet({ open, onClose, car, carId }: { open: boolean; onC
     "",
     description,
   ].join("\n");
+
 
   async function saveImages() {
     if (!car.images.length) return toast("Bilen har inga bilder ännu.", "info");
@@ -137,6 +228,20 @@ export function BlocketSheet({ open, onClose, car, carId }: { open: boolean; onC
   return (
     <Sheet open={open} onClose={onClose} title="Lägg upp på Blocket" size="lg" footer={<Btn onClick={onClose}>Klar</Btn>}>
       <div className="space-y-5 p-5">
+        {carId && (
+          <button
+            type="button"
+            onClick={() => openBlocketWindow(carId)}
+            className="hidden w-full items-center gap-3 rounded-[12px] bg-ios-indigo/10 px-4 py-3 text-left transition hover:bg-ios-indigo/15 md:flex"
+          >
+            <PanelRightOpen size={22} className="shrink-0 text-ios-indigo" />
+            <span>
+              <span className="block text-[15px] font-semibold text-ios-label">Öppna som eget fönster bredvid Blocket</span>
+              <span className="block text-[13px] text-ios-secondary">Ett smalt fönster med allt att kopiera och utrustningen att bocka av medan du fyller i Blocket.</span>
+            </span>
+          </button>
+        )}
+
         <ol className="space-y-1.5 rounded-[12px] bg-ios-blue/[.07] px-4 py-3 text-[14px] leading-relaxed">
           <li>
             <b>1.</b> Spara bilderna nedan och öppna Blocket (logga in med företagskontot).
@@ -146,6 +251,9 @@ export function BlocketSheet({ open, onClose, car, carId }: { open: boolean; onC
           </li>
           <li>
             <b>3.</b> Kopiera rubrik, pris och beskrivning hit nedifrån och klistra in. Ladda upp bilderna.
+          </li>
+          <li>
+            <b>4.</b> Gå igenom utrustningen längst ned: kryssa i den på Blocket och tryck här så stryks den.
           </li>
         </ol>
 
@@ -184,6 +292,11 @@ export function BlocketSheet({ open, onClose, car, carId }: { open: boolean; onC
             <CopyRow key={label} label={label} value={value} />
           ))}
           <CopyRow label="Beskrivning" value={description} multiline />
+        </div>
+
+        <div>
+          <h3 className="mb-2 text-[17px] font-semibold">Utrustning att bocka i på Blocket</h3>
+          <EquipmentChecklist equipment={car.facts.equipment} carId={carId} />
         </div>
       </div>
     </Sheet>

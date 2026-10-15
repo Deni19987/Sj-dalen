@@ -259,6 +259,11 @@ export function AdminLayout() {
     <FeedbackProvider>
       {!loggedIn ? (
         <LoginScreen />
+      ) : pathname.endsWith("/blocket") ? (
+        // Blocket-fönstret: utan meny, så att det får plats bredvid Blocket.
+        <div className="min-h-dvh bg-ios-bg font-apple text-ios-label antialiased">
+          <Outlet />
+        </div>
       ) : (
         <div className="flex min-h-dvh bg-ios-bg font-apple text-ios-label antialiased">
           <Sidebar pathname={pathname} />

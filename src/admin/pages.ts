@@ -7,3 +7,4 @@ export { InboxPage } from "./pages/Inbox";
 export { BookingsPage } from "./pages/Bookings";
 export { ContentPage } from "./pages/Content";
 export { SettingsPage } from "./pages/Settings";
+export { BlocketWindowPage } from "./pages/BlocketWindow";

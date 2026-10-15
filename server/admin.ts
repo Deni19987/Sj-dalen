@@ -19,7 +19,7 @@ import {
   type BlobStore,
   type Query,
 } from "./http";
-import { writeCarAd } from "./ai";
+import { standardEquipment, writeCarAd } from "./ai";
 import { lookupVehicle, type Env } from "./vehicle-lookup";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -155,7 +155,8 @@ function carFacts(v: unknown) {
     if (s.length > 100) throw new HttpError(400, "För lång text i bilens uppgifter.");
     if (s) out[k] = s;
   }
-  out.equipment = strList(f.equipment, "utrustning", { maxItems: 60, max: 60 });
+  out.equipment = strList(f.equipment, "utrustning", { maxItems: 120, max: 60 });
+  out.standardEquipment = strList(f.standardEquipment, "standardutrustning", { maxItems: 120, max: 60 });
   out.notes = text(f.notes, "anteckningar till AI", 4000);
   return out;
 }
@@ -230,7 +231,7 @@ function settingsValue(b: Record<string, any>) {
 
 // Nya kolumner läggs till automatiskt så att sajten fungerar även om db/schema.sql inte körts om.
 let schemaReady: Promise<unknown> | null = null;
-function ensureSchema(query: Query) {
+export function ensureSchema(query: Query) {
   schemaReady ??= (async () => {
     const cols = await query(
       "select column_name from information_schema.columns where table_schema = 'public' and table_name = 'cars' and column_name in ('reg_number', 'facts')",
@@ -326,6 +327,14 @@ export async function handleAdmin(req: Request, path: string, deps: AdminDeps): 
       if (!str(b.make, "märke", { max: 60, optional: true }) || !str(b.model, "modell", { max: 60, optional: true }))
         throw new HttpError(400, "Fyll i märke och modell först.");
       return json(await writeCarAd(deps.env, b), 200, NO_CACHE);
+    }
+
+    case "POST ai-equipment": {
+      const b = await body(req);
+      if (JSON.stringify(b).length > 5_000) throw new HttpError(400, "För mycket text.");
+      if (!str(b.make, "märke", { max: 60, optional: true }) || !str(b.model, "modell", { max: 60, optional: true }))
+        throw new HttpError(400, "Fyll i märke och modell först.");
+      return json({ standard: await standardEquipment(deps.env, b) }, 200, NO_CACHE);
     }
 
     /* ---------------- Bilar ---------------- */

@@ -1,7 +1,7 @@
 // API för Sjödalen Bilar. Körs som Netlify Function (netlify/functions/api.mts)
 // och pratar med Neon Postgres. Webbläsaren når aldrig databasen direkt.
 
-import { handleAdmin, serveImage } from "./admin";
+import { ensureSchema, handleAdmin, serveImage } from "./admin";
 import type { AuthConfig } from "./auth";
 import {
   body,
@@ -53,12 +53,13 @@ export function createHandler(query: Query, options: HandlerOptions) {
         }
 
         case "GET /cars":
+          await ensureSchema(query);
           return json(
             await query(`
               select c.id, c.make, c.model, c.year, c.title, c.highlight, c.body_type, c.color_name, c.color_hex,
                 c.mileage_km, c.fuel, c.gearbox, c.inspected, c.condition_summary, c.highlights, c.things_to_note,
                 c.description, c.start_price, c.min_increment, c.ends_at, c.status, c.sold_price, c.extended,
-                c.images, c.created_at,
+                c.images, c.created_at, coalesce(c.facts->'equipment', '[]'::jsonb) as equipment,
                 (c.reserve_price is null or coalesce((select max(amount) from bids b where b.car_id = c.id), 0) >= c.reserve_price)
                   as reserve_met,
                 (c.reserve_price is not null) as has_reserve,
