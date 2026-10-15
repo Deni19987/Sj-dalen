@@ -122,7 +122,7 @@ I bilredigeringen:
   utrustning (klickbara val) och fritext. Sparas i `cars.facts` och syns bara i admin.
 - **Skriv annonsen med AI** – Google Gemini skriver rubrik, säljtext, beskrivning, skick, höjdpunkter
   och "att känna till" utifrån allt ovan. Kräver `GEMINI_API_KEY` (samma som Carflow); `GEMINI_MODEL`
-  är valfri (standard `gemini-2.5-flash`).
+  är valfri (standard `gemini-flash-latest`, med reservmodeller).
 - **Lägg upp på Blocket** – alla fält i Blockets ordning med kopieringsknappar, *Kopiera allt*, pris
   för Blocket och en knapp som sparar alla bilder (delas till Bilder på mobilen).
 
