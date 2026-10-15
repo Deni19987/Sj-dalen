@@ -277,27 +277,62 @@ export async function lookupVehicle(env: Env, rawReg: string): Promise<VehicleDa
   if (reg.length < 2 || reg.length > 8) throw new HttpError(400, "Ange ett giltigt registreringsnummer.");
   const target = canonical(reg);
 
-  const list = await gmail(env, `/messages?q=${encodeURIComponent(`from:${SENDER}`)}&maxResults=60&includeSpamTrash=true`);
-  const ids: string[] = (list.messages ?? []).map((m: { id: string }) => m.id);
+  const search = async (q: string, max: number): Promise<string[]> =>
+    ((await gmail(env, `/messages?q=${encodeURIComponent(q)}&maxResults=${max}&includeSpamTrash=true`)).messages ?? []).map(
+      (m: { id: string }) => m.id,
+    );
+
+  /** Tolkar ett helt mejl om det gäller rätt bil. */
+  const handle = async (msg: any): Promise<VehicleData | null> => {
+    if (!msg) return null;
+    const headers: { name: string; value: string }[] = msg.payload?.headers ?? [];
+    const subject = headers.find((h) => h.name.toLowerCase() === "subject")?.value ?? "";
+    const text = bodyText(msg.payload);
+    if (!canonical(`${subject} ${msg.snippet ?? ""} ${text}`).includes(target)) return null;
+    const parsed = parse(text, reg);
+    // AI:n läser mejlet; varje värde den hittar är kontrollerat mot mejltexten. Det AI:n
+    // inte hittar fylls i från den vanliga tolkningen (som också bara läser ur mejlet).
+    const ai = await extractWithAi(env, text);
+    const merged = { ...parsed };
+    if (ai) for (const [k, v] of Object.entries(ai)) if (v != null) (merged as Record<string, unknown>)[k] = v;
+    return { ...merged, emailReceivedAt: new Date(Number(msg.internalDate)).toISOString(), readByAi: !!ai };
+  };
+
+  const readFull = async (id: string) => handle(await gmail(env, `/messages/${id}?format=full`).catch(() => null));
+
+  // 1. Snabbast: sök direkt på registreringsnumret (med och utan mellanslag).
+  const spaced = reg.replace(/^([A-ZÅÄÖ]{3})(\d)/, "$1 $2");
+  const direct = await search(`from:${SENDER} ("${reg}" OR "${spaced}")`, 5).catch((): string[] => []);
+  for (const id of direct) {
+    const found = await readFull(id);
+    if (found) return found;
+  }
+
+  // 2. Gmails sökning kan ligga efter för nya mejl – gå igenom de senaste registerutdragen.
+  const ids = await search(`from:${SENDER}`, 60);
   if (ids.length === 0)
     throw new HttpError(404, "Inga registerutdrag har kommit till inkorgen ännu. Beställ ett och försök igen om någon minut.");
 
-  // Nyaste först, några åt gången så att vi hinner inom funktionens tidsgräns.
-  for (let i = 0; i < ids.length; i += 8) {
-    const batch = await Promise.all(ids.slice(i, i + 8).map((id) => gmail(env, `/messages/${id}?format=full`).catch(() => null)));
-    for (const msg of batch) {
-      if (!msg) continue;
-      const headers: { name: string; value: string }[] = msg.payload?.headers ?? [];
-      const subject = headers.find((h) => h.name.toLowerCase() === "subject")?.value ?? "";
-      const text = bodyText(msg.payload);
-      if (!canonical(`${subject} ${msg.snippet ?? ""} ${text}`).includes(target)) continue;
-      const parsed = parse(text, reg);
-      // AI:n läser mejlet; varje värde den hittar är kontrollerat mot mejltexten. Det AI:n
-      // inte hittar fylls i från den vanliga tolkningen (som också bara läser ur mejlet).
-      const ai = await extractWithAi(env, text);
-      const merged = { ...parsed };
-      if (ai) for (const [k, v] of Object.entries(ai)) if (v != null) (merged as Record<string, unknown>)[k] = v;
-      return { ...merged, emailReceivedAt: new Date(Number(msg.internalDate)).toISOString(), readByAi: !!ai };
+  // 2a. Läs bara ämnesrad och förhandsvisning (snabbt), alla på en gång.
+  const light = await Promise.all(
+    ids.map((id) => gmail(env, `/messages/${id}?format=metadata&metadataHeaders=Subject`).catch(() => null)),
+  );
+  const likely = light
+    .filter((m) => m && canonical(`${m.payload?.headers?.[0]?.value ?? ""} ${m.snippet ?? ""}`).includes(target))
+    .map((m) => m.id as string);
+  for (const id of likely) {
+    const found = await readFull(id);
+    if (found) return found;
+  }
+
+  // 2b. Registreringsnumret stod inte i ämne/förhandsvisning – läs hela mejlen, nyaste först.
+  const rest = ids.filter((id) => !likely.includes(id) && !direct.includes(id));
+  for (let i = 0; i < rest.length; i += 15) {
+    const batch = rest.slice(i, i + 15);
+    const msgs = await Promise.all(batch.map((id) => gmail(env, `/messages/${id}?format=full`).catch(() => null)));
+    for (const msg of msgs) {
+      const found = await handle(msg);
+      if (found) return found;
     }
   }
   throw new HttpError(404, `Registerutdraget för ${reg} har inte kommit in än. Vänta någon minut och försök igen.`);

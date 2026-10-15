@@ -13,7 +13,7 @@ export function BlocketWindowPage() {
   if (!car) return <EmptyState icon={null} title="Bilen hittades inte" text="Spara bilen först och öppna fönstret igen." />;
 
   const input = { ...car, reservePrice: car.reservePrice ?? null };
-  const rows = blocketRows(input, String(car.reservePrice ?? car.startPrice));
+  const rows = blocketRows(input, Number.isFinite(car.reservePrice ?? car.startPrice) ? String(car.reservePrice ?? car.startPrice) : "");
 
   return (
     <div className="space-y-5 p-4">

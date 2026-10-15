@@ -122,7 +122,7 @@ export interface AdminCar extends Car {
 }
 
 /** Fälten som skickas när en bil sparas. */
-export type CarInput = Omit<Car, "id" | "bids" | "extended" | "hasReserve" | "reserveMet" | "equipment" | "engine" | "horsepower" | "drive"> & {
+export type CarInput = Omit<Car, "id" | "bids" | "extended" | "hasReserve" | "reserveMet" | "equipment" | "engine" | "horsepower" | "drive" | "trim"> & {
   reservePrice?: number | null;
   adminNote: string;
   regNumber: string;
@@ -251,6 +251,11 @@ export interface Content {
 
 const toAdminCar = (r: Row): AdminCar => ({
   ...toCar(r),
+  // Utkast kan sakna årsmodell, miltal och utropspris (NaN = inte ifyllt).
+  year: r.year ?? NaN,
+  mileageKm: r.mileage_km ?? NaN,
+  startPrice: r.start_price ?? NaN,
+  title: r.title || [r.make, r.model].filter(Boolean).join(" ") || (r.reg_number ? `Utkast ${r.reg_number}` : "Namnlöst utkast"),
   reservePrice: r.reserve_price ?? undefined,
   adminNote: r.admin_note ?? "",
   regNumber: r.reg_number ?? "",
@@ -259,6 +264,7 @@ const toAdminCar = (r: Row): AdminCar => ({
   engine: r.facts?.engine,
   horsepower: r.facts?.horsepower,
   drive: r.facts?.drive,
+  trim: r.facts?.trim,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
   bids: (r.bids ?? []).map(toBid),

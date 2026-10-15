@@ -7,6 +7,7 @@ import type { BodyType, Car, CarStatus } from "../../lib/types";
 import { lookupVehicle, suggestStandardEquipment, useAdminCars, useDeleteBid, useSaveCar, writeAdWithAi, type AdminCar, type CarFacts, type CarInput, type VehicleData } from "../api";
 import { BlocketSheet } from "../BlocketSheet";
 import { EquipmentPicker } from "../EquipmentPicker";
+import { BackLink } from "../../components/BackLink";
 import { MAKES } from "../../lib/vehicle";
 import { useCarActions } from "../CarActions";
 import { bidsNewestFirst } from "../../lib/auction";
@@ -82,6 +83,9 @@ interface Form {
 
 const EMPTY_FACTS: CarFacts = { equipment: [], notes: "" };
 
+/** Tal → text i formuläret; saknat värde (utkast) blir tomt fält. */
+const numStr = (x: number | null | undefined) => (x != null && Number.isFinite(x) ? String(x) : "");
+
 function fromCar(car?: AdminCar): Form {
   if (!car) {
     // Förifyllning från en säljförfrågan i inkorgen (tas bort efter första renderingen)
@@ -124,13 +128,13 @@ function fromCar(car?: AdminCar): Form {
   return {
     make: car.make,
     model: car.model,
-    year: String(car.year),
+    year: numStr(car.year),
     title: car.title,
     highlight: car.highlight,
     bodyType: car.bodyType,
     colorName: car.colorName,
     colorHex: car.colorHex,
-    mileageKm: String(car.mileageKm),
+    mileageKm: numStr(car.mileageKm),
     fuel: car.fuel,
     gearbox: car.gearbox,
     inspected: car.inspected,
@@ -138,7 +142,7 @@ function fromCar(car?: AdminCar): Form {
     highlights: car.highlights,
     thingsToNote: car.thingsToNote,
     description: car.description,
-    startPrice: String(car.startPrice),
+    startPrice: numStr(car.startPrice),
     minIncrement: String(car.minIncrement),
     reservePrice: car.reservePrice != null ? String(car.reservePrice) : "",
     endsAt: toLocalInput(car.endsAt),
@@ -174,7 +178,7 @@ function toInput(f: Form): CarInput {
     startPrice: n(f.startPrice),
     minIncrement: n(f.minIncrement),
     reservePrice: f.reservePrice.trim() ? n(f.reservePrice) : null,
-    endsAt: new Date(f.endsAt).toISOString(),
+    endsAt: f.endsAt && !Number.isNaN(new Date(f.endsAt).getTime()) ? new Date(f.endsAt).toISOString() : "",
     status: f.status,
     soldPrice: f.soldPrice.trim() ? n(f.soldPrice) : undefined,
     images: f.images,
@@ -186,17 +190,22 @@ function toInput(f: Form): CarInput {
 
 function validate(f: Form): Partial<Record<keyof Form, string>> {
   const e: Partial<Record<keyof Form, string>> = {};
+  // Ett utkast får sparas halvfärdigt – då kontrolleras bara det som är ifyllt.
+  const draft = f.status === "draft";
+  const needed = (v: string) => !draft || v.trim() !== "";
   const year = n(f.year);
-  if (!f.make.trim()) e.make = "Ange märke";
-  if (!f.model.trim()) e.model = "Ange modell";
-  if (!Number.isInteger(year) || year < 1900 || year > new Date().getFullYear() + 1) e.year = "Ogiltig årsmodell";
-  if (!f.title.trim()) e.title = "Ange en rubrik";
-  if (!f.colorName.trim()) e.colorName = "Ange färg";
-  if (!Number.isInteger(n(f.mileageKm)) || n(f.mileageKm) < 0) e.mileageKm = "Ange mätarställning";
-  if (!Number.isInteger(n(f.startPrice)) || n(f.startPrice) < 0) e.startPrice = "Ange utropspris";
-  if (!Number.isInteger(n(f.minIncrement)) || n(f.minIncrement) < 1) e.minIncrement = "Minst 1 kr";
+  if (!draft && !f.make.trim()) e.make = "Ange märke";
+  if (!draft && !f.model.trim()) e.model = "Ange modell";
+  if (needed(f.year) && (!Number.isInteger(year) || year < 1900 || year > new Date().getFullYear() + 1)) e.year = "Ogiltig årsmodell";
+  if (!draft && !f.title.trim()) e.title = "Ange en rubrik";
+  if (!draft && !f.colorName.trim()) e.colorName = "Ange färg";
+  if (needed(f.mileageKm) && (!Number.isInteger(n(f.mileageKm)) || n(f.mileageKm) < 0)) e.mileageKm = "Ange mätarställning";
+  if (needed(f.startPrice) && (!Number.isInteger(n(f.startPrice)) || n(f.startPrice) < 0)) e.startPrice = "Ange utropspris";
+  if (needed(f.minIncrement) && (!Number.isInteger(n(f.minIncrement)) || n(f.minIncrement) < 1)) e.minIncrement = "Minst 1 kr";
   if (f.reservePrice.trim() && !Number.isInteger(n(f.reservePrice))) e.reservePrice = "Ogiltigt belopp";
-  if (!f.endsAt || Number.isNaN(new Date(f.endsAt).getTime())) e.endsAt = "Ange sluttid";
+  if (draft && !f.endsAt) {
+    /* sluttid sätts när utkastet publiceras */
+  } else if (!f.endsAt || Number.isNaN(new Date(f.endsAt).getTime())) e.endsAt = "Ange sluttid";
   else if (f.status === "active" && new Date(f.endsAt).getTime() <= Date.now()) e.endsAt = "Sluttiden har redan passerat";
   if (f.status === "sold" && !Number.isInteger(n(f.soldPrice))) e.soldPrice = "Ange slutpris";
   return e;
@@ -536,6 +545,10 @@ function CarEditor({ car }: { car?: AdminCar }) {
       status: i.status === "draft" ? "active" : i.status,
       bids: car?.bids ?? [],
       extended: car?.extended,
+      engine: form.facts.engine,
+      horsepower: form.facts.horsepower,
+      drive: form.facts.drive,
+      trim: form.facts.trim,
     } as Car;
   }, [form, car]);
 
@@ -547,10 +560,10 @@ function CarEditor({ car }: { car?: AdminCar }) {
       {/* Verktygsrad */}
       <div className="sticky top-0 z-30 -mx-4 mb-6 border-b border-black/[.06] bg-ios-bg/85 px-4 py-3 backdrop-blur-xl sm:-mx-8 sm:px-8">
         <div className="flex items-center gap-3">
-          <Link to="/admin/bilar" className="flex items-center text-[17px] text-ios-blue">
+          <BackLink to="/admin/bilar" from={["/admin/bilar"]} className="flex items-center text-[17px] text-ios-blue">
             <ChevronLeft size={22} className="-ml-1.5" />
             <span className="hidden sm:inline">Bilar</span>
-          </Link>
+          </BackLink>
           <div className="min-w-0 flex-1">
             <p className="truncate text-[17px] font-semibold">{car ? form.title || car.title : "Ny bil"}</p>
             <p className="truncate text-[12px] text-ios-secondary">
@@ -637,6 +650,7 @@ function CarEditor({ car }: { car?: AdminCar }) {
                 <Btn variant="primary" icon={<Search size={16} />} loading={lookupBusy} onClick={onLookup} disabled={!form.regNumber.trim()}>
                   Hämta från e-post
                 </Btn>
+                {lookupBusy && <p className="text-center text-[12px] text-ios-secondary">Söker i inkorgen och läser registerutdraget …</p>}
               </div>
             </div>
             {lookupInfo && <p className="rounded-[12px] bg-ios-green/10 px-4 py-2.5 text-[14px] text-ios-label">{lookupInfo}</p>}
@@ -729,8 +743,9 @@ function CarEditor({ car }: { car?: AdminCar }) {
               <Field label="Drivning">
                 <Select value={form.facts.drive ?? ""} onChange={(e) => setFact("drive", e.target.value)}>
                   <option value="">–</option>
-                  <option>Tvåhjulsdrift</option>
-                  <option>Fyrhjulsdrift</option>
+                  {[...new Set(["Framhjulsdrift", "Bakhjulsdrift", "Fyrhjulsdrift", ...(form.facts.drive ? [form.facts.drive] : [])])].map((d) => (
+                    <option key={d}>{d}</option>
+                  ))}
                 </Select>
               </Field>
               <Field label="Antal ägare">

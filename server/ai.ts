@@ -83,28 +83,54 @@ export async function gemini(
   user: string,
   schema: object,
   temperature: number,
-  timeoutMs = 20_000,
+  { timeoutMs = 20_000, fast = false }: { timeoutMs?: number; fast?: boolean } = {},
 ): Promise<Record<string, unknown>> {
   const key = env.GEMINI_API_KEY?.trim().replace(/^["']|["']$/g, "");
   if (!key) throw new HttpError(503, "AI är inte aktiverat. Lägg in GEMINI_API_KEY i Netlify (samma nyckel som i Carflow).");
-  // Google byter ut modeller ofta. "gemini-flash-latest" pekar alltid på den senaste Flash-modellen;
-  // de andra är reserver om en modell inte finns eller inte är tillgänglig för nyckeln.
-  const models = [...new Set([env.GEMINI_MODEL?.trim(), "gemini-flash-latest", "gemini-3.8-flash", "gemini-3.5-flash-lite"].filter(Boolean) as string[])];
+  // Google byter ut modeller ofta. "-latest"-namnen pekar alltid på den senaste modellen; de andra är
+  // reserver om en modell inte finns eller inte är tillgänglig för nyckeln. Enkla uppgifter (fast), som
+  // att läsa av ett mejl, går till den mindre och snabbare Flash-Lite-modellen.
+  const models = [
+    ...new Set(
+      [
+        env.GEMINI_MODEL?.trim(),
+        ...(fast ? ["gemini-flash-lite-latest", "gemini-3.5-flash-lite"] : []),
+        "gemini-flash-latest",
+        "gemini-3.8-flash",
+        "gemini-3.5-flash-lite",
+      ].filter(Boolean) as string[],
+    ),
+  ];
+  const deadline = Date.now() + timeoutMs;
+
+  const call = (model: string, thinking: boolean) =>
+    fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      method: "POST",
+      signal: AbortSignal.timeout(Math.max(1_000, deadline - Date.now())),
+      headers: { "content-type": "application/json", "x-goog-api-key": key },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: system }] },
+        contents: [{ role: "user", parts: [{ text: user }] }],
+        generationConfig: {
+          temperature,
+          responseMimeType: "application/json",
+          responseSchema: schema,
+          // Nyare modeller "tänker" innan de svarar. Det behövs inte här och tar flera sekunder.
+          ...(thinking ? { thinkingConfig: { thinkingLevel: fast ? "minimal" : "low" } } : {}),
+        },
+      }),
+    });
 
   let res: Response | null = null;
   let lastError = "";
   for (const model of models) {
     try {
-      res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-        method: "POST",
-        signal: AbortSignal.timeout(timeoutMs),
-        headers: { "content-type": "application/json", "x-goog-api-key": key },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: system }] },
-          contents: [{ role: "user", parts: [{ text: user }] }],
-          generationConfig: { temperature, responseMimeType: "application/json", responseSchema: schema },
-        }),
-      });
+      res = await call(model, true);
+      if (res.status === 400) {
+        // Modeller som inte kan styra tänkandet: fråga igen utan inställningen.
+        const body = await res.clone().text().catch(() => "");
+        if (/think/i.test(body)) res = await call(model, false);
+      }
     } catch (err) {
       const timedOut = err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError");
       throw new HttpError(504, timedOut ? "AI:n tog för lång tid på sig. Försök igen." : "Kunde inte nå AI-tjänsten. Försök igen.");

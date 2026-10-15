@@ -114,28 +114,31 @@ function carValues(b: Record<string, any>) {
   const images = strList(b.images, "bilder", { maxItems: 40, max: 24 });
   if (images.some((id) => !IMAGE_ID_RE.test(id))) throw new HttpError(400, "Ogiltig bild.");
   const status = oneOf(b.status, "status", CAR_STATUSES);
-  const startPrice = int(b.startPrice, "utropspris", 0, 100_000_000);
+  // Ett utkast får sparas halvfärdigt; allt krävs först när bilen publiceras.
+  const draft = status === "draft";
+  const reqText = (v: unknown, field: string, max: number) => (draft ? text(v, field, max) : str(v, field, { max })!);
+  const reqInt = (v: unknown, field: string, min: number, max: number) => (draft ? optInt(v, field, min, max) : int(v, field, min, max));
   return {
-    make: str(b.make, "märke", { max: 60 }),
-    model: str(b.model, "modell", { max: 60 }),
-    year: int(b.year, "årsmodell", 1900, thisYear + 1),
-    title: str(b.title, "rubrik", { max: 120 }),
+    make: reqText(b.make, "märke", 60),
+    model: reqText(b.model, "modell", 60),
+    year: reqInt(b.year, "årsmodell", 1900, thisYear + 1),
+    title: reqText(b.title, "rubrik", 120),
     highlight: text(b.highlight, "kort säljtext", 200),
     body_type: oneOf(b.bodyType, "kaross", BODY_TYPES),
-    color_name: str(b.colorName, "färg", { max: 40 }),
+    color_name: reqText(b.colorName, "färg", 40),
     color_hex: colorHex,
-    mileage_km: int(b.mileageKm, "mätarställning", 0, 3_000_000),
-    fuel: str(b.fuel, "bränsle", { max: 30 }),
-    gearbox: str(b.gearbox, "växellåda", { max: 30 }),
+    mileage_km: reqInt(b.mileageKm, "mätarställning", 0, 3_000_000),
+    fuel: reqText(b.fuel, "bränsle", 30),
+    gearbox: reqText(b.gearbox, "växellåda", 30),
     inspected: bool(b.inspected),
     condition_summary: text(b.conditionSummary, "skick", 500),
     highlights: strList(b.highlights, "höjdpunkter"),
     things_to_note: strList(b.thingsToNote, "att känna till"),
     description: text(b.description, "beskrivning", 8000),
-    start_price: startPrice,
-    min_increment: int(b.minIncrement, "budhöjning", 1, 1_000_000),
+    start_price: reqInt(b.startPrice, "utropspris", 0, 100_000_000),
+    min_increment: draft ? (optInt(b.minIncrement, "budhöjning", 1, 1_000_000) ?? 1000) : int(b.minIncrement, "budhöjning", 1, 1_000_000),
     reserve_price: optInt(b.reservePrice, "reservationspris", 0, 100_000_000),
-    ends_at: timestamp(b.endsAt, "sluttid"),
+    ends_at: draft && !b.endsAt ? new Date(Date.now() + 7 * DAY).toISOString() : timestamp(b.endsAt, "sluttid"),
     status,
     sold_price: status === "sold" ? int(b.soldPrice, "slutpris", 0, 100_000_000) : optInt(b.soldPrice, "slutpris", 0, 100_000_000),
     images,
@@ -143,6 +146,22 @@ function carValues(b: Record<string, any>) {
     reg_number: (text(b.regNumber, "registreringsnummer", 10)).toUpperCase().replace(/\s/g, ""),
     facts: JSON.stringify(carFacts(b.facts)),
   };
+}
+
+/** Ett utkast kan sakna uppgifter – kontrolleras innan det publiceras. */
+function assertComplete(car: Record<string, any>) {
+  const missing = [
+    !car.make && "märke",
+    !car.model && "modell",
+    car.year == null && "årsmodell",
+    !car.title && "rubrik",
+    !car.color_name && "färg",
+    car.mileage_km == null && "mätarställning",
+    !car.fuel && "bränsle",
+    !car.gearbox && "växellåda",
+    car.start_price == null && "utropspris",
+  ].filter(Boolean);
+  if (missing.length) throw new HttpError(400, `Utkastet saknar ${missing.join(", ")}. Fyll i och spara innan du publicerar.`);
 }
 
 /** Extra uppgifter om bilen (för AI-texten och Blocket). Visas bara i admin. */
@@ -235,11 +254,16 @@ let schemaReady: Promise<unknown> | null = null;
 export function ensureSchema(query: Query) {
   schemaReady ??= (async () => {
     const cols = await query(
-      "select column_name from information_schema.columns where table_schema = 'public' and table_name = 'cars' and column_name in ('reg_number', 'facts')",
+      `select column_name, is_nullable from information_schema.columns
+        where table_schema = 'public' and table_name = 'cars' and column_name in ('reg_number', 'facts', 'year', 'mileage_km', 'start_price')`,
     );
-    if (cols.length === 2) return;
-    await query("alter table public.cars add column if not exists reg_number text not null default ''");
-    await query("alter table public.cars add column if not exists facts jsonb not null default '{}'");
+    const has = (c: string) => cols.some((r) => r.column_name === c);
+    const nullable = (c: string) => cols.some((r) => r.column_name === c && r.is_nullable === "YES");
+    if (!has("reg_number")) await query("alter table public.cars add column if not exists reg_number text not null default ''");
+    if (!has("facts")) await query("alter table public.cars add column if not exists facts jsonb not null default '{}'");
+    // Utkast får sakna årsmodell, miltal och utropspris.
+    for (const c of ["year", "mileage_km", "start_price"])
+      if (!nullable(c)) await query(`alter table public.cars alter column ${c} drop not null`);
   })().catch((err) => {
     schemaReady = null;
     throw err;
@@ -347,7 +371,7 @@ export async function handleAdmin(req: Request, path: string, deps: AdminDeps): 
 
     case "POST cars": {
       const v = carValues(await body(req));
-      const newId = await uniqueId(query, "cars", slugify(`${v.make} ${v.model} ${v.year}`));
+      const newId = await uniqueId(query, "cars", slugify([v.make, v.model, v.year].filter((x) => x != null && x !== "").join(" ") || "utkast"));
       const cols = Object.keys(v);
       await query(
         `insert into cars (id, ${cols.join(", ")}) values ($1, ${cols.map((c, i) => `$${i + 2}${CAR_CAST[c] ?? ""}`).join(", ")})`,
@@ -400,6 +424,7 @@ export async function handleAdmin(req: Request, path: string, deps: AdminDeps): 
           ]);
           break;
         case "relist":
+          assertComplete(car);
           if (bool(b.clearBids)) await query("delete from bids where car_id = $1", [id]);
           await query(
             `update cars set status = 'active', sold_price = null, sold_at = null, extended = false,
@@ -408,6 +433,7 @@ export async function handleAdmin(req: Request, path: string, deps: AdminDeps): 
           );
           break;
         case "publish":
+          assertComplete(car);
           if (new Date(car.ends_at).getTime() <= Date.now())
             throw new HttpError(400, "Sluttiden har redan passerat. Välj en ny sluttid innan du publicerar.");
           await query("update cars set status = 'active', updated_at = now() where id = $1", [id]);
@@ -436,7 +462,7 @@ export async function handleAdmin(req: Request, path: string, deps: AdminDeps): 
             );
             copies.push(newImg);
           }
-          const newId = await uniqueId(query, "cars", slugify(`${car.make} ${car.model} ${car.year}`));
+          const newId = await uniqueId(query, "cars", slugify([car.make, car.model, car.year].filter((x) => x != null && x !== "").join(" ") || "utkast"));
           await query(
             `insert into cars (id, make, model, year, title, highlight, body_type, color_name, color_hex, mileage_km,
                                fuel, gearbox, inspected, condition_summary, highlights, things_to_note, description,

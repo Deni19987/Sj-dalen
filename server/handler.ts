@@ -60,7 +60,7 @@ export function createHandler(query: Query, options: HandlerOptions) {
                 c.mileage_km, c.fuel, c.gearbox, c.inspected, c.condition_summary, c.highlights, c.things_to_note,
                 c.description, c.start_price, c.min_increment, c.ends_at, c.status, c.sold_price, c.extended,
                 c.images, c.created_at, coalesce(c.facts->'equipment', '[]'::jsonb) as equipment,
-                c.facts->>'engine' as engine, c.facts->>'horsepower' as horsepower, c.facts->>'drive' as drive,
+                c.facts->>'engine' as engine, c.facts->>'horsepower' as horsepower, c.facts->>'drive' as drive, c.facts->>'trim' as trim,
                 (c.reserve_price is null or coalesce((select max(amount) from bids b where b.car_id = c.id), 0) >= c.reserve_price)
                   as reserve_met,
                 (c.reserve_price is not null) as has_reserve,
