@@ -92,6 +92,8 @@ type Row = Record<string, any>;
 
 /** Extra uppgifter om bilen som AI:n och Blocket-hjälpen använder. Visas bara i admin. */
 export interface CarFacts {
+  /** Motor, t.ex. "1.4 TSI". */
+  engine?: string;
   owners?: string;
   firstRegistered?: string;
   lastInspection?: string;
@@ -120,7 +122,7 @@ export interface AdminCar extends Car {
 }
 
 /** Fälten som skickas när en bil sparas. */
-export type CarInput = Omit<Car, "id" | "bids" | "extended" | "hasReserve" | "reserveMet" | "equipment"> & {
+export type CarInput = Omit<Car, "id" | "bids" | "extended" | "hasReserve" | "reserveMet" | "equipment" | "engine" | "horsepower" | "drive"> & {
   reservePrice?: number | null;
   adminNote: string;
   regNumber: string;
@@ -132,6 +134,8 @@ export interface VehicleData {
   regNumber: string;
   make: string | null;
   model: string | null;
+  engine: string | null;
+  trim: string | null;
   year: number | null;
   color: string | null;
   fuel: string | null;
@@ -252,6 +256,9 @@ const toAdminCar = (r: Row): AdminCar => ({
   regNumber: r.reg_number ?? "",
   facts: { equipment: [], notes: "", ...(r.facts ?? {}) },
   equipment: r.facts?.equipment ?? [],
+  engine: r.facts?.engine,
+  horsepower: r.facts?.horsepower,
+  drive: r.facts?.drive,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
   bids: (r.bids ?? []).map(toBid),

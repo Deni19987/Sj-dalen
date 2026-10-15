@@ -5,11 +5,14 @@
 // personnummer tas bort innan texten skickas till AI:n.
 
 import { gemini } from "./ai";
+import { engineFromVolume, matchMake, splitModelEngine, tidyModel } from "../src/lib/vehicle";
 import type { Env } from "./vehicle-lookup";
 
 export interface ExtractedVehicle {
   make: string | null;
   model: string | null;
+  engine: string | null;
+  trim: string | null;
   year: number | null;
   color: string | null;
   fuel: string | null;
@@ -72,8 +75,12 @@ ABSOLUT VIKTIGAST – HITTA INTE PÅ:
 - Räkna inte ut något: ange tal precis som de står, och ange enheten separat.
 
 Fält:
-- make: Fabrikat / märke.
-- model: Handelsbeteckning / modell.
+Fabrikat, modell och motor står ofta ihop på en rad, t.ex. "VOLKSWAGEN GOLF 1.4 TSI" eller "VOLVO V70 D4". Dela upp dem:
+- make: BARA märket, t.ex. "VOLKSWAGEN" eller "VOLVO".
+- model: BARA modellnamnet, utan märke och utan motor, t.ex. "GOLF" eller "V70".
+- engine: motorbeteckningen om den står, t.ex. "1.4 TSI", "1.2", "D4", "2.0 TDI". Skriv den exakt som i texten. null om ingen motor står.
+- engineVolume: cylindervolym/slagvolym i cm³ om den står (bara talet).
+- trim: utförande/version om det uttryckligen står (t.ex. "Momentum", "Comfortline"), annars null.
 - year: Fordonsår eller modellår (fyrsiffrigt år) om det uttryckligen står. Använd INTE datum för registrering eller besiktning.
 - color: Färg.
 - fuel: Drivmedel / bränsle.
@@ -94,6 +101,9 @@ const SCHEMA = {
   properties: {
     make: str,
     model: str,
+    engine: str,
+    engineVolume: num,
+    trim: str,
     year: num,
     color: str,
     fuel: str,
@@ -164,9 +174,17 @@ export async function extractWithAi(env: Env, emailText: string): Promise<Extrac
   const mileage = numNearLabel(text, ["mätarställning"], out.mileage, 0, 5_000_000);
   const power = numNearLabel(text, ["effekt"], out.power, 1, 2_000);
   const year = numNearLabel(text, ["modellår", "fordonsår", "årsmodell"], out.year, 1900, 2100);
+  // Märket skrivs som i märkeslistan ("Volkswagen"), modellen snyggas till ("Golf").
+  const rawMake = inText(text, out.make);
+  const make = rawMake ? (matchMake(rawMake)?.make ?? capitalize(rawMake)) : null;
+  const rawModel = inText(text, out.model);
+  const split = rawModel ? splitModelEngine(rawModel) : null;
+  const engine = inText(text, out.engine) ?? split?.engine ?? engineFromVolume(numNearLabel(text, ["volym"], out.engineVolume, 500, 9000));
   return {
-    make: capitalize(inText(text, out.make)),
-    model: inText(text, out.model),
+    make,
+    model: split?.model ? tidyModel(split.model) : null,
+    engine: engine?.replace(/,/, ".") ?? null,
+    trim: inText(text, out.trim),
     year,
     color: capitalize(inText(text, out.color)),
     fuel: capitalize(inText(text, out.fuel)),

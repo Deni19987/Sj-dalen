@@ -14,6 +14,7 @@
 
 import { HttpError } from "./http";
 import { extractWithAi } from "./registerutdrag-ai";
+import { engineFromVolume, matchMake, splitModelEngine } from "../src/lib/vehicle";
 
 export type Env = Record<string, string | undefined>;
 
@@ -21,6 +22,10 @@ export interface VehicleData {
   regNumber: string;
   make: string | null;
   model: string | null;
+  /** Motor, t.ex. "1.4 TSI" eller "1.4 liter". */
+  engine: string | null;
+  /** Utförande, om det står i mejlet. */
+  trim: string | null;
   year: number | null;
   color: string | null;
   fuel: string | null;
@@ -150,6 +155,9 @@ const LABELS = [
   "Bränsle",
   "Växellåda",
   "Motoreffekt",
+  "Cylindervolym",
+  "Slagvolym",
+  "Motorvolym",
   "Effekt",
   "Datum för första registrering",
   "I trafik första gången",
@@ -193,12 +201,39 @@ function mileageKm(s: string | null): number | null {
   return /\bmil\b/i.test(s ?? "") ? n * 10 : n;
 }
 
+/**
+ * Fabrikat och handelsbeteckning kan stå ihop ("VOLKSWAGEN GOLF 1.4 TSI").
+ * Delas upp i märke, modell och motor.
+ */
+export function makeModelEngine(fabrikat: string | null, handelsbeteckning: string | null, volume: string | null) {
+  let make: string | null = null;
+  let rest = "";
+  if (fabrikat) {
+    const m = matchMake(fabrikat);
+    if (m) ({ make, rest } = m);
+    else {
+      const [first, ...others] = fabrikat.split(/\s+/);
+      make = capitalize(first);
+      rest = others.join(" ");
+    }
+  }
+  // Handelsbeteckningen är modellen; annars det som stod efter märket.
+  const modelText = (handelsbeteckning ?? rest).trim();
+  const { model, engine } = modelText ? splitModelEngine(modelText) : { model: null, engine: null };
+  return { make, model: model || null, engine: engine ?? engineFromVolume(firstInt(volume)) };
+}
+
 function parse(text: string, reg: string): Omit<VehicleData, "emailReceivedAt" | "readByAi"> {
   const year = firstInt(field(text, "Modellår")) ?? firstInt(field(text, "Fordonsår"));
+  const mme = makeModelEngine(
+    field(text, "Fabrikat"),
+    field(text, "Handelsbeteckning"),
+    field(text, "Cylindervolym") ?? field(text, "Slagvolym") ?? field(text, "Motorvolym"),
+  );
   return {
     regNumber: field(text, "Registreringsnummer")?.toUpperCase().replace(/\s/g, "") ?? reg,
-    make: capitalize(field(text, "Fabrikat")),
-    model: field(text, "Handelsbeteckning"),
+    ...mme,
+    trim: null,
     year: year && year > 1900 && year < 2100 ? year : null,
     color: capitalize(field(text, "Färg")),
     fuel: capitalize(field(text, "Drivmedel") ?? field(text, "Bränsle")),
