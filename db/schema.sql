@@ -126,6 +126,10 @@ alter table public.cars add column if not exists sold_at       timestamptz;
 -- Registreringsnummer och extra uppgifter (utrustning, ägare, besiktning …) för AI-texten och Blocket. Bara admin.
 alter table public.cars add column if not exists reg_number    text not null default '';
 alter table public.cars add column if not exists facts         jsonb not null default '{}';
+-- Utkast får sparas utan årsmodell, miltal och utropspris (krävs när bilen publiceras).
+alter table public.cars alter column year        drop not null;
+alter table public.cars alter column mileage_km  drop not null;
+alter table public.cars alter column start_price drop not null;
 
 -- Budgivarens kontaktuppgifter (visas bara i admin)
 alter table public.bids add column if not exists email text;

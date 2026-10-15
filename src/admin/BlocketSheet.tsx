@@ -174,7 +174,10 @@ export function openBlocketWindow(carId: string) {
 
 export function BlocketSheet({ open, onClose, car, carId }: { open: boolean; onClose: () => void; car: CarInput; carId?: string }) {
   const { toast } = useFeedback();
-  const [price, setPrice] = useState(() => String(car.reservePrice ?? car.startPrice ?? ""));
+  const [price, setPrice] = useState(() => {
+    const p = car.reservePrice ?? car.startPrice;
+    return p != null && Number.isFinite(p) ? String(p) : "";
+  });
   const [linkAuction, setLinkAuction] = useState(false);
   const [saving, setSaving] = useState(false);
 

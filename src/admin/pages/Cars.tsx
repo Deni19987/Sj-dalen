@@ -143,7 +143,7 @@ function CarRow({
             <Link to="/admin/bilar/$id" params={{ id: car.id }} className="min-w-0">
               <p className="truncate text-[17px] font-semibold tracking-[-0.01em] text-ios-label">{car.title}</p>
               <p className="truncate text-[13px] text-ios-secondary">
-                {car.year} · {num(car.mileageKm)} km · {car.fuel} · {car.gearbox}
+                {[Number.isFinite(car.year) && car.year, Number.isFinite(car.mileageKm) && `${num(car.mileageKm)} km`, car.fuel, car.gearbox].filter(Boolean).join(" · ") || "Inte ifyllt än"}
               </p>
             </Link>
             <ActionMenu items={menu} />
@@ -182,7 +182,7 @@ function CarRow({
                 <p className="flex items-center justify-end gap-1 text-[12px] text-ios-tertiary">
                   <Gavel size={11} /> {car.bids.length} bud{top ? ` · ${top.name}` : ""}
                 </p>
-                <p className="text-[17px] font-semibold tabular-nums">{kr(currentPrice(car))}</p>
+                <p className="text-[17px] font-semibold tabular-nums">{Number.isFinite(currentPrice(car)) ? kr(currentPrice(car)) : "–"}</p>
               </div>
             </div>
           </div>

@@ -82,6 +82,9 @@ interface Form {
 
 const EMPTY_FACTS: CarFacts = { equipment: [], notes: "" };
 
+/** Tal → text i formuläret; saknat värde (utkast) blir tomt fält. */
+const numStr = (x: number | null | undefined) => (x != null && Number.isFinite(x) ? String(x) : "");
+
 function fromCar(car?: AdminCar): Form {
   if (!car) {
     // Förifyllning från en säljförfrågan i inkorgen (tas bort efter första renderingen)
@@ -124,13 +127,13 @@ function fromCar(car?: AdminCar): Form {
   return {
     make: car.make,
     model: car.model,
-    year: String(car.year),
+    year: numStr(car.year),
     title: car.title,
     highlight: car.highlight,
     bodyType: car.bodyType,
     colorName: car.colorName,
     colorHex: car.colorHex,
-    mileageKm: String(car.mileageKm),
+    mileageKm: numStr(car.mileageKm),
     fuel: car.fuel,
     gearbox: car.gearbox,
     inspected: car.inspected,
@@ -138,7 +141,7 @@ function fromCar(car?: AdminCar): Form {
     highlights: car.highlights,
     thingsToNote: car.thingsToNote,
     description: car.description,
-    startPrice: String(car.startPrice),
+    startPrice: numStr(car.startPrice),
     minIncrement: String(car.minIncrement),
     reservePrice: car.reservePrice != null ? String(car.reservePrice) : "",
     endsAt: toLocalInput(car.endsAt),
@@ -174,7 +177,7 @@ function toInput(f: Form): CarInput {
     startPrice: n(f.startPrice),
     minIncrement: n(f.minIncrement),
     reservePrice: f.reservePrice.trim() ? n(f.reservePrice) : null,
-    endsAt: new Date(f.endsAt).toISOString(),
+    endsAt: f.endsAt && !Number.isNaN(new Date(f.endsAt).getTime()) ? new Date(f.endsAt).toISOString() : "",
     status: f.status,
     soldPrice: f.soldPrice.trim() ? n(f.soldPrice) : undefined,
     images: f.images,
@@ -186,17 +189,22 @@ function toInput(f: Form): CarInput {
 
 function validate(f: Form): Partial<Record<keyof Form, string>> {
   const e: Partial<Record<keyof Form, string>> = {};
+  // Ett utkast får sparas halvfärdigt – då kontrolleras bara det som är ifyllt.
+  const draft = f.status === "draft";
+  const needed = (v: string) => !draft || v.trim() !== "";
   const year = n(f.year);
-  if (!f.make.trim()) e.make = "Ange märke";
-  if (!f.model.trim()) e.model = "Ange modell";
-  if (!Number.isInteger(year) || year < 1900 || year > new Date().getFullYear() + 1) e.year = "Ogiltig årsmodell";
-  if (!f.title.trim()) e.title = "Ange en rubrik";
-  if (!f.colorName.trim()) e.colorName = "Ange färg";
-  if (!Number.isInteger(n(f.mileageKm)) || n(f.mileageKm) < 0) e.mileageKm = "Ange mätarställning";
-  if (!Number.isInteger(n(f.startPrice)) || n(f.startPrice) < 0) e.startPrice = "Ange utropspris";
-  if (!Number.isInteger(n(f.minIncrement)) || n(f.minIncrement) < 1) e.minIncrement = "Minst 1 kr";
+  if (!draft && !f.make.trim()) e.make = "Ange märke";
+  if (!draft && !f.model.trim()) e.model = "Ange modell";
+  if (needed(f.year) && (!Number.isInteger(year) || year < 1900 || year > new Date().getFullYear() + 1)) e.year = "Ogiltig årsmodell";
+  if (!draft && !f.title.trim()) e.title = "Ange en rubrik";
+  if (!draft && !f.colorName.trim()) e.colorName = "Ange färg";
+  if (needed(f.mileageKm) && (!Number.isInteger(n(f.mileageKm)) || n(f.mileageKm) < 0)) e.mileageKm = "Ange mätarställning";
+  if (needed(f.startPrice) && (!Number.isInteger(n(f.startPrice)) || n(f.startPrice) < 0)) e.startPrice = "Ange utropspris";
+  if (needed(f.minIncrement) && (!Number.isInteger(n(f.minIncrement)) || n(f.minIncrement) < 1)) e.minIncrement = "Minst 1 kr";
   if (f.reservePrice.trim() && !Number.isInteger(n(f.reservePrice))) e.reservePrice = "Ogiltigt belopp";
-  if (!f.endsAt || Number.isNaN(new Date(f.endsAt).getTime())) e.endsAt = "Ange sluttid";
+  if (draft && !f.endsAt) {
+    /* sluttid sätts när utkastet publiceras */
+  } else if (!f.endsAt || Number.isNaN(new Date(f.endsAt).getTime())) e.endsAt = "Ange sluttid";
   else if (f.status === "active" && new Date(f.endsAt).getTime() <= Date.now()) e.endsAt = "Sluttiden har redan passerat";
   if (f.status === "sold" && !Number.isInteger(n(f.soldPrice))) e.soldPrice = "Ange slutpris";
   return e;

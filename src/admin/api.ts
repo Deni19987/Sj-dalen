@@ -251,6 +251,11 @@ export interface Content {
 
 const toAdminCar = (r: Row): AdminCar => ({
   ...toCar(r),
+  // Utkast kan sakna årsmodell, miltal och utropspris (NaN = inte ifyllt).
+  year: r.year ?? NaN,
+  mileageKm: r.mileage_km ?? NaN,
+  startPrice: r.start_price ?? NaN,
+  title: r.title || [r.make, r.model].filter(Boolean).join(" ") || (r.reg_number ? `Utkast ${r.reg_number}` : "Namnlöst utkast"),
   reservePrice: r.reserve_price ?? undefined,
   adminNote: r.admin_note ?? "",
   regNumber: r.reg_number ?? "",
