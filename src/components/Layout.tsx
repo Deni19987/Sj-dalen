@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { Megaphone } from "lucide-react";
 import { cn } from "../lib/cn";
@@ -39,10 +38,6 @@ function AnnouncementBar() {
 
 export function Layout() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-
-  useEffect(() => {
-    window.scrollTo({ top: 0 });
-  }, [pathname]);
 
   const path = pathname.replace(/\/+$/, "") || "/";
 

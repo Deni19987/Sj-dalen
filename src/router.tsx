@@ -83,7 +83,9 @@ const routeTree = rootRoute.addChildren([
   ]),
 ]);
 
-export const router = createRouter({ routeTree, defaultPreload: "intent" });
+// scrollRestoration: går man tillbaka (bakåtknappen) hamnar man där man var på sidan;
+// en ny länk börjar högst upp.
+export const router = createRouter({ routeTree, defaultPreload: "intent", scrollRestoration: true });
 
 declare module "@tanstack/react-router" {
   interface Register {

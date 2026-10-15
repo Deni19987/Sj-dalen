@@ -251,10 +251,6 @@ export function AdminLayout() {
     };
   }, []);
 
-  useEffect(() => {
-    window.scrollTo({ top: 0 });
-  }, [pathname]);
-
   return (
     <FeedbackProvider>
       {!loggedIn ? (
