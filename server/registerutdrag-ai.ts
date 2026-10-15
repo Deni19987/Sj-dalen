@@ -5,7 +5,7 @@
 // personnummer tas bort innan texten skickas till AI:n.
 
 import { gemini } from "./ai";
-import { engineFromVolume, matchMake, splitModelEngine, tidyModel } from "../src/lib/vehicle";
+import { engineFromVolume, matchMake, splitEngineTrim, splitModelEngine, tidyModel } from "../src/lib/vehicle";
 import type { Env } from "./vehicle-lookup";
 
 export interface ExtractedVehicle {
@@ -78,9 +78,10 @@ Fält:
 Fabrikat, modell och motor står ofta ihop på en rad, t.ex. "VOLKSWAGEN GOLF 1.4 TSI" eller "VOLVO V70 D4". Dela upp dem:
 - make: BARA märket, t.ex. "VOLKSWAGEN" eller "VOLVO".
 - model: BARA modellnamnet, utan märke och utan motor, t.ex. "GOLF" eller "V70".
-- engine: motorbeteckningen om den står, t.ex. "1.4 TSI", "1.2", "D4", "2.0 TDI". Skriv den exakt som i texten. null om ingen motor står.
+- engine: BARA motorbeteckningen om den står, t.ex. "1.4 TSI", "1.2", "D4", "2.0 TDI". Skriv den exakt som i texten. null om ingen motor står.
+  Utrustningsnivåer som Enjoy, Cosmo, Comfortline, Highline, Momentum, Summum, Titanium, Trend är INTE motor – de är trim.
 - engineVolume: cylindervolym/slagvolym i cm³ om den står (bara talet).
-- trim: utförande/version om det uttryckligen står (t.ex. "Momentum", "Comfortline"), annars null.
+- trim: utförande/utrustningsnivå om det uttryckligen står i texten (t.ex. "ENJOY", "Momentum", "Comfortline"), annars null.
 - year: Fordonsår eller modellår (fyrsiffrigt år) om det uttryckligen står. Använd INTE datum för registrering eller besiktning.
 - color: Färg.
 - fuel: Drivmedel / bränsle.
@@ -179,12 +180,16 @@ export async function extractWithAi(env: Env, emailText: string): Promise<Extrac
   const make = rawMake ? (matchMake(rawMake)?.make ?? capitalize(rawMake)) : null;
   const rawModel = inText(text, out.model);
   const split = rawModel ? splitModelEngine(rawModel) : null;
-  const engine = inText(text, out.engine) ?? split?.engine ?? engineFromVolume(numNearLabel(text, ["volym"], out.engineVolume, 500, 9000));
+  // Motorn får bara innehålla motorn – ett utförande som "Enjoy" efter den flyttas till utförande.
+  const aiEngine = inText(text, out.engine);
+  const engineSplit = aiEngine ? splitEngineTrim(aiEngine) : null;
+  const engine = engineSplit?.engine ?? split?.engine ?? engineFromVolume(numNearLabel(text, ["volym"], out.engineVolume, 500, 9000));
+  const aiTrim = inText(text, out.trim);
   return {
     make,
     model: split?.model ? tidyModel(split.model) : null,
     engine: engine?.replace(/,/, ".") ?? null,
-    trim: inText(text, out.trim),
+    trim: (aiTrim ? tidyModel(aiTrim) : null) ?? engineSplit?.trim ?? split?.trim ?? null,
     year,
     color: capitalize(inText(text, out.color)),
     fuel: capitalize(inText(text, out.fuel)),
