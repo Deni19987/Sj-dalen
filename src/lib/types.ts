@@ -55,6 +55,7 @@ export interface Car {
   engine?: string;
   horsepower?: string;
   drive?: string;
+  trim?: string;
   /** Om bilen har ett reservationspris och om det är uppnått (beloppet visas aldrig publikt). */
   hasReserve?: boolean;
   reserveMet?: boolean;

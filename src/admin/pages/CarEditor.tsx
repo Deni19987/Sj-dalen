@@ -544,6 +544,10 @@ function CarEditor({ car }: { car?: AdminCar }) {
       status: i.status === "draft" ? "active" : i.status,
       bids: car?.bids ?? [],
       extended: car?.extended,
+      engine: form.facts.engine,
+      horsepower: form.facts.horsepower,
+      drive: form.facts.drive,
+      trim: form.facts.trim,
     } as Car;
   }, [form, car]);
 
@@ -738,8 +742,9 @@ function CarEditor({ car }: { car?: AdminCar }) {
               <Field label="Drivning">
                 <Select value={form.facts.drive ?? ""} onChange={(e) => setFact("drive", e.target.value)}>
                   <option value="">–</option>
-                  <option>Tvåhjulsdrift</option>
-                  <option>Fyrhjulsdrift</option>
+                  {[...new Set(["Framhjulsdrift", "Bakhjulsdrift", "Fyrhjulsdrift", ...(form.facts.drive ? [form.facts.drive] : [])])].map((d) => (
+                    <option key={d}>{d}</option>
+                  ))}
                 </Select>
               </Field>
               <Field label="Antal ägare">

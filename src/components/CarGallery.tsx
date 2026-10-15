@@ -11,7 +11,7 @@ export function CarCover({ car, className }: { car: Car; className?: string }) {
   const cover = car.images[0];
   if (!cover)
     return (
-      <div className={cn("bg-graphite-100 px-6 pt-6", className)}>
+      <div className={cn("flex aspect-[4/3] items-center justify-center bg-graphite-100 px-8", className)}>
         <CarIllustration colorHex={car.colorHex} bodyType={car.bodyType} className="mx-auto h-32 w-full" />
       </div>
     );

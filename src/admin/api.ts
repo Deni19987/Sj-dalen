@@ -122,7 +122,7 @@ export interface AdminCar extends Car {
 }
 
 /** Fälten som skickas när en bil sparas. */
-export type CarInput = Omit<Car, "id" | "bids" | "extended" | "hasReserve" | "reserveMet" | "equipment" | "engine" | "horsepower" | "drive"> & {
+export type CarInput = Omit<Car, "id" | "bids" | "extended" | "hasReserve" | "reserveMet" | "equipment" | "engine" | "horsepower" | "drive" | "trim"> & {
   reservePrice?: number | null;
   adminNote: string;
   regNumber: string;
@@ -264,6 +264,7 @@ const toAdminCar = (r: Row): AdminCar => ({
   engine: r.facts?.engine,
   horsepower: r.facts?.horsepower,
   drive: r.facts?.drive,
+  trim: r.facts?.trim,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
   bids: (r.bids ?? []).map(toBid),
