@@ -4,12 +4,11 @@ import { currentPrice, isEnded } from "../lib/auction";
 import { cn } from "../lib/cn";
 import { formatKm, formatPrice } from "../lib/format";
 import type { Car } from "../lib/types";
+import { carName, carSubtitle } from "../lib/vehicle";
 import { useWatch } from "../lib/watchlist";
 import { Badge } from "./Badge";
 import { CarCover } from "./CarGallery";
 import { Countdown } from "./Countdown";
-
-const BODY_LABEL: Record<string, string> = { kombi: "Kombi", sedan: "Sedan", halvkombi: "Halvkombi", suv: "SUV", skåpbil: "Skåpbil" };
 
 /** De fyra viktigaste fakta för kortet, i prioritetsordning. Det som saknas hoppas över. */
 function cardSpecs(car: Car): { icon: LucideIcon; label: string; value: string }[] {
@@ -28,8 +27,8 @@ export function CarCard({ car }: { car: Car }) {
   const ended = isEnded(car, Date.now());
   const price = currentPrice(car);
   // Rubriken på kortet är bara bilens namn; motor och utförande på raden under.
-  const name = [car.make, car.model].filter(Boolean).join(" ") || car.title;
-  const sub = [car.engine, car.trim].filter(Boolean).join(" · ") || BODY_LABEL[car.bodyType] || "";
+  const name = carName(car);
+  const sub = carSubtitle(car);
   const specs = cardSpecs(car);
 
   return (

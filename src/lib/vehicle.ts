@@ -79,3 +79,15 @@ export function engineFromVolume(cc: number | null): string | null {
   if (!cc || cc < 500 || cc > 9000) return null;
   return `${(cc / 1000).toFixed(1)} liter`;
 }
+
+const BODY_LABEL: Record<string, string> = { kombi: "Kombi", sedan: "Sedan", halvkombi: "Halvkombi", suv: "SUV", skåpbil: "Skåpbil" };
+
+/** Bilens namn som rubrik: märke + modell (t.ex. "Opel Corsa"). Faller tillbaka på annonsens rubrik. */
+export function carName(car: { make: string; model: string; title: string }): string {
+  return [car.make, car.model].map((s) => s?.trim()).filter(Boolean).join(" ") || car.title;
+}
+
+/** Raden under namnet: motor och utförande ("1.2 · Njoy"), annars karossen. */
+export function carSubtitle(car: { engine?: string; trim?: string; bodyType: string }): string {
+  return [car.engine, car.trim].map((s) => s?.trim()).filter(Boolean).join(" · ") || BODY_LABEL[car.bodyType] || "";
+}

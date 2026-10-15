@@ -22,6 +22,7 @@ import {
 import { BackLink } from "../components/BackLink";
 import { Badge } from "../components/Badge";
 import { groupEquipment } from "../lib/equipment";
+import { carName, carSubtitle } from "../lib/vehicle";
 import { Button } from "../components/Button";
 import { CarGallery } from "../components/CarGallery";
 import { Countdown } from "../components/Countdown";
@@ -239,9 +240,10 @@ export function CarDetailPage() {
             <div className="rounded-2xl bg-white p-6 shadow-card">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <h1 className="font-display text-2xl font-extrabold uppercase leading-tight tracking-tight text-graphite-900">
-                    {car.title}
+                  <h1 className="font-display text-2xl font-extrabold leading-tight tracking-tight text-graphite-900 sm:text-3xl">
+                    {carName(car)}
                   </h1>
+                  {carSubtitle(car) && <p className="mt-0.5 text-graphite-500">{carSubtitle(car)}</p>}
                   {car.highlight && <p className="mt-2 text-sm text-graphite-600">{car.highlight}</p>}
                 </div>
                 <button
