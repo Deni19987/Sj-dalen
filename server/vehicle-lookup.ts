@@ -13,6 +13,7 @@
 //   VEHICLE_LOOKUP_INBOX                                       – visas i admin som mottagaradress
 
 import { HttpError } from "./http";
+import { extractWithAi } from "./registerutdrag-ai";
 
 export type Env = Record<string, string | undefined>;
 
@@ -33,6 +34,8 @@ export interface VehicleData {
   mileageKm: number | null;
   horsepower: number | null;
   emailReceivedAt: string | null;
+  /** Om AI:n läste mejlet (annars bara den vanliga tolkningen). */
+  readByAi: boolean;
 }
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -190,7 +193,7 @@ function mileageKm(s: string | null): number | null {
   return /\bmil\b/i.test(s ?? "") ? n * 10 : n;
 }
 
-function parse(text: string, reg: string): Omit<VehicleData, "emailReceivedAt"> {
+function parse(text: string, reg: string): Omit<VehicleData, "emailReceivedAt" | "readByAi"> {
   const year = firstInt(field(text, "Modellår")) ?? firstInt(field(text, "Fordonsår"));
   return {
     regNumber: field(text, "Registreringsnummer")?.toUpperCase().replace(/\s/g, "") ?? reg,
@@ -254,7 +257,13 @@ export async function lookupVehicle(env: Env, rawReg: string): Promise<VehicleDa
       const subject = headers.find((h) => h.name.toLowerCase() === "subject")?.value ?? "";
       const text = bodyText(msg.payload);
       if (!canonical(`${subject} ${msg.snippet ?? ""} ${text}`).includes(target)) continue;
-      return { ...parse(text, reg), emailReceivedAt: new Date(Number(msg.internalDate)).toISOString() };
+      const parsed = parse(text, reg);
+      // AI:n läser mejlet; varje värde den hittar är kontrollerat mot mejltexten. Det AI:n
+      // inte hittar fylls i från den vanliga tolkningen (som också bara läser ur mejlet).
+      const ai = await extractWithAi(env, text);
+      const merged = { ...parsed };
+      if (ai) for (const [k, v] of Object.entries(ai)) if (v != null) (merged as Record<string, unknown>)[k] = v;
+      return { ...merged, emailReceivedAt: new Date(Number(msg.internalDate)).toISOString(), readByAi: !!ai };
     }
   }
   throw new HttpError(404, `Registerutdraget för ${reg} har inte kommit in än. Vänta någon minut och försök igen.`);

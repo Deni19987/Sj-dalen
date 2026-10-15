@@ -105,6 +105,8 @@ export interface CarFacts {
   equipment: string[];
   /** Det AI:n föreslog som standard på modellen (visas med en markering i checklistan). */
   standardEquipment?: string[];
+  /** Tillval som AI:n tror finns till modellen (visas okryssade så att man kan bocka i dem). */
+  optionalEquipment?: string[];
   notes: string;
 }
 
@@ -143,6 +145,7 @@ export interface VehicleData {
   mileageKm: number | null;
   horsepower: number | null;
   emailReceivedAt: string | null;
+  readByAi: boolean;
 }
 
 /** Annonstext som AI:n skriver. */
@@ -159,7 +162,7 @@ export const lookupVehicle = (regNumber: string) =>
   request<VehicleData>("/vehicle-lookup", { method: "POST", body: { regNumber } });
 
 export const suggestStandardEquipment = (car: Record<string, unknown>) =>
-  request<{ standard: string[] }>("/ai-equipment", { method: "POST", body: car });
+  request<{ standard: string[]; options: string[] }>("/ai-equipment", { method: "POST", body: car });
 
 export const writeAdWithAi = (car: Record<string, unknown>) => request<AdText>("/ai-ad", { method: "POST", body: car });
 

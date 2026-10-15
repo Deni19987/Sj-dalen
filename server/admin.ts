@@ -19,7 +19,7 @@ import {
   type BlobStore,
   type Query,
 } from "./http";
-import { standardEquipment, writeCarAd } from "./ai";
+import { equipmentSuggestions, writeCarAd } from "./ai";
 import { lookupVehicle, type Env } from "./vehicle-lookup";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -157,6 +157,7 @@ function carFacts(v: unknown) {
   }
   out.equipment = strList(f.equipment, "utrustning", { maxItems: 120, max: 60 });
   out.standardEquipment = strList(f.standardEquipment, "standardutrustning", { maxItems: 120, max: 60 });
+  out.optionalEquipment = strList(f.optionalEquipment, "möjliga tillval", { maxItems: 60, max: 60 });
   out.notes = text(f.notes, "anteckningar till AI", 4000);
   return out;
 }
@@ -334,7 +335,7 @@ export async function handleAdmin(req: Request, path: string, deps: AdminDeps): 
       if (JSON.stringify(b).length > 5_000) throw new HttpError(400, "För mycket text.");
       if (!str(b.make, "märke", { max: 60, optional: true }) || !str(b.model, "modell", { max: 60, optional: true }))
         throw new HttpError(400, "Fyll i märke och modell först.");
-      return json({ standard: await standardEquipment(deps.env, b) }, 200, NO_CACHE);
+      return json(await equipmentSuggestions(deps.env, b), 200, NO_CACHE);
     }
 
     /* ---------------- Bilar ---------------- */
