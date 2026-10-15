@@ -7,6 +7,7 @@ import type { BodyType, Car, CarStatus } from "../../lib/types";
 import { lookupVehicle, suggestStandardEquipment, useAdminCars, useDeleteBid, useSaveCar, writeAdWithAi, type AdminCar, type CarFacts, type CarInput, type VehicleData } from "../api";
 import { BlocketSheet } from "../BlocketSheet";
 import { EquipmentPicker } from "../EquipmentPicker";
+import { BackLink } from "../../components/BackLink";
 import { MAKES } from "../../lib/vehicle";
 import { useCarActions } from "../CarActions";
 import { bidsNewestFirst } from "../../lib/auction";
@@ -559,10 +560,10 @@ function CarEditor({ car }: { car?: AdminCar }) {
       {/* Verktygsrad */}
       <div className="sticky top-0 z-30 -mx-4 mb-6 border-b border-black/[.06] bg-ios-bg/85 px-4 py-3 backdrop-blur-xl sm:-mx-8 sm:px-8">
         <div className="flex items-center gap-3">
-          <Link to="/admin/bilar" className="flex items-center text-[17px] text-ios-blue">
+          <BackLink to="/admin/bilar" from={["/admin/bilar"]} className="flex items-center text-[17px] text-ios-blue">
             <ChevronLeft size={22} className="-ml-1.5" />
             <span className="hidden sm:inline">Bilar</span>
-          </Link>
+          </BackLink>
           <div className="min-w-0 flex-1">
             <p className="truncate text-[17px] font-semibold">{car ? form.title || car.title : "Ny bil"}</p>
             <p className="truncate text-[12px] text-ios-secondary">

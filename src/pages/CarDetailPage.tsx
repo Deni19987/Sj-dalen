@@ -19,6 +19,7 @@ import {
   ListChecks,
   Route,
 } from "lucide-react";
+import { BackLink } from "../components/BackLink";
 import { Badge } from "../components/Badge";
 import { groupEquipment } from "../lib/equipment";
 import { Button } from "../components/Button";
@@ -206,12 +207,17 @@ export function CarDetailPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-      <Link
+      <BackLink
         to="/auktion"
+        from={["/", "/auktion", "/auktion/salda"]}
         className="inline-flex items-center gap-1 text-sm font-semibold text-graphite-500 hover:text-graphite-900"
       >
-        <ChevronLeft size={16} /> Till alla bilar
-      </Link>
+        {(back) => (
+          <>
+            <ChevronLeft size={16} /> {back ? "Tillbaka" : "Till alla bilar"}
+          </>
+        )}
+      </BackLink>
 
       {/* Mobil: bilder → bud → detaljer. Dator: bilder och detaljer till vänster, budrutan fast till höger. */}
       <div className="mt-4 grid gap-8 lg:grid-cols-[minmax(0,1fr)_380px] lg:gap-10">

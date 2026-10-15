@@ -1,3 +1,4 @@
+import { recordNavigation } from "./lib/navHistory";
 import { createRootRoute, createRoute, createRouter, lazyRouteComponent } from "@tanstack/react-router";
 import { Layout } from "./components/Layout";
 import { AboutPage } from "./pages/AboutPage";
@@ -86,6 +87,7 @@ const routeTree = rootRoute.addChildren([
 // scrollRestoration: går man tillbaka (bakåtknappen) hamnar man där man var på sidan;
 // en ny länk börjar högst upp.
 export const router = createRouter({ routeTree, defaultPreload: "intent", scrollRestoration: true });
+router.subscribe("onResolved", ({ toLocation }) => recordNavigation(toLocation.pathname));
 
 declare module "@tanstack/react-router" {
   interface Register {
