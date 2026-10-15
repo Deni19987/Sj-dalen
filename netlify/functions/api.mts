@@ -19,6 +19,8 @@ export default createHandler(query, {
   blobs,
   // ADMIN_PASSWORD (och gärna ADMIN_SECRET) sätts i Netlify → Environment variables.
   auth: { password: process.env.ADMIN_PASSWORD, secret: process.env.ADMIN_SECRET },
+  // GEMINI_API_KEY (AI-texter) och GMAIL_* (hämta från Transportstyrelsen) – se server/ai.ts och server/vehicle-lookup.ts.
+  env: process.env,
 });
 
 export const config = { path: "/api/*" };

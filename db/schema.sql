@@ -123,6 +123,9 @@ alter table public.cars add column if not exists reserve_price integer check (re
 alter table public.cars add column if not exists admin_note    text not null default '';
 alter table public.cars add column if not exists updated_at    timestamptz not null default now();
 alter table public.cars add column if not exists sold_at       timestamptz;
+-- Registreringsnummer och extra uppgifter (utrustning, ägare, besiktning …) för AI-texten och Blocket. Bara admin.
+alter table public.cars add column if not exists reg_number    text not null default '';
+alter table public.cars add column if not exists facts         jsonb not null default '{}';
 
 -- Budgivarens kontaktuppgifter (visas bara i admin)
 alter table public.bids add column if not exists email text;

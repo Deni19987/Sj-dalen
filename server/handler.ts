@@ -23,6 +23,7 @@ export type { BlobStore, Query } from "./http";
 export interface HandlerOptions {
   blobs: BlobStore;
   auth: AuthConfig;
+  env: Record<string, string | undefined>;
 }
 
 export function createHandler(query: Query, options: HandlerOptions) {
@@ -33,7 +34,7 @@ export function createHandler(query: Query, options: HandlerOptions) {
 
     try {
       if (path === "/admin" || path.startsWith("/admin/"))
-        return await handleAdmin(req, path, { query, blobs: options.blobs, auth: options.auth });
+        return await handleAdmin(req, path, { query, blobs: options.blobs, auth: options.auth, env: options.env });
       if (req.method === "GET" && path.startsWith("/images/")) return await serveImage(path, options.blobs);
 
       switch (route) {

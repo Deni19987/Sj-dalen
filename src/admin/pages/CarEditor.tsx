@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useBlocker, useNavigate, useParams } from "@tanstack/react-router";
-import { ChevronLeft, ExternalLink, Gavel, Mail, Phone, Plus, Trash2, X } from "lucide-react";
+import { ChevronLeft, ExternalLink, Gavel, Loader2, Mail, Phone, Plus, Search, Sparkles, Store, Trash2, X } from "lucide-react";
 import { CarCard } from "../../components/CarCard";
 import { cn } from "../../lib/cn";
 import type { BodyType, Car, CarStatus } from "../../lib/types";
-import { useAdminCars, useDeleteBid, useSaveCar, type AdminCar, type CarInput } from "../api";
+import { lookupVehicle, useAdminCars, useDeleteBid, useSaveCar, writeAdWithAi, type AdminCar, type CarFacts, type CarInput, type VehicleData } from "../api";
+import { BlocketSheet } from "../BlocketSheet";
 import { useCarActions } from "../CarActions";
 import { bidsNewestFirst } from "../../lib/auction";
 import { carState, endsInDays, fmtDateTime, kr, num, relativeTime, STATE_LABEL, telHref, toLocalInput } from "../helpers";
@@ -23,6 +24,34 @@ const BODY_TYPES: { value: BodyType; label: string }[] = [
 const FUELS = ["Bensin", "Diesel", "El", "Hybrid", "Laddhybrid", "Gas", "E85"];
 const GEARBOXES = ["Manuell", "Automat"];
 const MAKES = ["Audi", "BMW", "Citroën", "Ford", "Honda", "Hyundai", "Kia", "Mazda", "Mercedes-Benz", "Mitsubishi", "Nissan", "Opel", "Peugeot", "Renault", "Saab", "Seat", "Skoda", "Subaru", "Suzuki", "Tesla", "Toyota", "Volkswagen", "Volvo"];
+const EQUIPMENT = [
+  "Dragkrok",
+  "Navigation",
+  "Backkamera",
+  "Parkeringssensorer",
+  "Adaptiv farthållare",
+  "Farthållare",
+  "Apple CarPlay / Android Auto",
+  "Bluetooth",
+  "Klimatanläggning",
+  "Stolsvärme",
+  "Rattvärme",
+  "Motorvärmare",
+  "Kupévärmare",
+  "Läderklädsel",
+  "Elstolar",
+  "Keyless",
+  "LED-strålkastare",
+  "Panoramatak",
+  "Takräcke",
+  "Alufälgar",
+  "Sommar- och vinterdäck",
+];
+const SERVICE_HISTORY = ["Full servicehistorik", "Delvis servicehistorik", "Servicebok saknas"];
+const TS_URL = "https://fordon-fu-regnr.transportstyrelsen.se/";
+// Inkorgen som registerutdragen skickas till (samma som Carflow). Kan ändras med VITE_VEHICLE_LOOKUP_INBOX.
+const LOOKUP_INBOX = import.meta.env.VITE_VEHICLE_LOOKUP_INBOX || "deni.ferchichi@scandicreach.se";
+
 const COLORS = [
   { name: "Svart", hex: "#1C1E22" },
   { name: "Vit", hex: "#F1F2F0" },
@@ -60,7 +89,11 @@ interface Form {
   soldPrice: string;
   images: string[];
   adminNote: string;
+  regNumber: string;
+  facts: CarFacts;
 }
+
+const EMPTY_FACTS: CarFacts = { equipment: [], notes: "" };
 
 function fromCar(car?: AdminCar): Form {
   if (!car) {
@@ -96,6 +129,8 @@ function fromCar(car?: AdminCar): Form {
       soldPrice: "",
       images: [],
       adminNote: "",
+      regNumber: "",
+      facts: EMPTY_FACTS,
       ...prefill,
     };
   }
@@ -124,6 +159,8 @@ function fromCar(car?: AdminCar): Form {
     soldPrice: car.soldPrice != null ? String(car.soldPrice) : "",
     images: car.images,
     adminNote: car.adminNote,
+    regNumber: car.regNumber,
+    facts: car.facts,
   };
 }
 
@@ -155,6 +192,8 @@ function toInput(f: Form): CarInput {
     soldPrice: f.soldPrice.trim() ? n(f.soldPrice) : undefined,
     images: f.images,
     adminNote: f.adminNote,
+    regNumber: f.regNumber.trim().toUpperCase().replace(/\s/g, ""),
+    facts: { ...f.facts, equipment: f.facts.equipment.filter(Boolean), notes: f.facts.notes.trim() },
   };
 }
 
@@ -174,6 +213,71 @@ function validate(f: Form): Partial<Record<keyof Form, string>> {
   else if (f.status === "active" && new Date(f.endsAt).getTime() <= Date.now()) e.endsAt = "Sluttiden har redan passerat";
   if (f.status === "sold" && !Number.isInteger(n(f.soldPrice))) e.soldPrice = "Ange slutpris";
   return e;
+}
+
+/** Översätter ett registerutdrag till formulärfält. Bara uppgifter som finns skrivs över. */
+function fromVehicle(v: VehicleData, f: Form): Form {
+  const color = v.color ? COLORS.find((c) => v.color!.toLowerCase().startsWith(c.name.toLowerCase())) : undefined;
+  const fuel = v.fuel ? (FUELS.find((x) => x.toLowerCase() === v.fuel!.toLowerCase()) ?? v.fuel) : null;
+  const gearbox = v.gearbox ? (/auto/i.test(v.gearbox) ? "Automat" : /manu/i.test(v.gearbox) ? "Manuell" : v.gearbox) : null;
+  const body = v.bodyType ? BODY_TYPES.find((b) => v.bodyType!.toLowerCase().includes(b.value.replace("skåpbil", "skåp"))) : undefined;
+  const pick = (a: string | number | null | undefined, b: string) => (a == null || a === "" ? b : String(a));
+  return {
+    ...f,
+    regNumber: v.regNumber || f.regNumber,
+    make: pick(v.make, f.make),
+    model: pick(v.model, f.model),
+    year: pick(v.year, f.year),
+    colorName: pick(v.color, f.colorName),
+    colorHex: color?.hex ?? f.colorHex,
+    fuel: fuel ?? f.fuel,
+    gearbox: gearbox ?? f.gearbox,
+    bodyType: body?.value ?? f.bodyType,
+    mileageKm: pick(v.mileageKm, f.mileageKm),
+    facts: {
+      ...f.facts,
+      owners: pick(v.owners, f.facts.owners ?? ""),
+      firstRegistered: pick(v.firstRegistered, f.facts.firstRegistered ?? ""),
+      lastInspection: pick(v.lastInspection, f.facts.lastInspection ?? ""),
+      nextInspection: pick(v.nextInspection, f.facts.nextInspection ?? ""),
+      horsepower: pick(v.horsepower, f.facts.horsepower ?? ""),
+    },
+  };
+}
+
+/** Allt vi vet om bilen, i ett format som AI:n förstår. Tomma fält skickas inte. */
+function aiInput(f: Form) {
+  const clean = (o: Record<string, unknown>) =>
+    Object.fromEntries(Object.entries(o).filter(([, v]) => v !== "" && v != null && !(Array.isArray(v) && v.length === 0)));
+  const km = n(f.mileageKm);
+  return clean({
+    make: f.make.trim(),
+    model: f.model.trim(),
+    utforande: f.facts.trim,
+    arsmodell: f.year.trim(),
+    kaross: BODY_TYPES.find((b) => b.value === f.bodyType)?.label,
+    farg: f.colorName.trim(),
+    matarstallning: Number.isFinite(km) ? `${km} km (${Math.round(km / 10)} mil)` : "",
+    bransle: f.fuel,
+    vaxellada: f.gearbox,
+    hastkrafter: f.facts.horsepower,
+    drivning: f.facts.drive,
+    antalAgare: f.facts.owners,
+    iTrafikForstaGangen: f.facts.firstRegistered,
+    senastBesiktigad: f.facts.lastInspection,
+    nastaBesiktningSenast: f.facts.nextInspection,
+    servicehistorik: f.facts.serviceHistory,
+    antalNycklar: f.facts.keys,
+    dack: f.facts.tires,
+    utrustning: f.facts.equipment,
+    verkstadsbesiktigad: f.inspected,
+    anteckningarFranSaljaren: f.facts.notes,
+    // Det som redan står i annonsen tas med så att inget går förlorat när texten skrivs om.
+    befintligBeskrivning: f.description.trim(),
+    befintligaHojdpunkter: f.highlights,
+    befintligtAttKannaTill: f.thingsToNote,
+    befintligtSkick: f.conditionSummary.trim(),
+  });
 }
 
 export function CarEditorPage() {
@@ -251,13 +355,17 @@ function CarEditor({ car }: { car?: AdminCar }) {
   const navigate = useNavigate();
   const save = useSaveCar();
   const run = useRun();
-  const { toast } = useFeedback();
+  const { toast, confirm } = useFeedback();
   const { menuItems, sheets } = useCarActions({ onDeleted: () => navigate({ to: "/admin/bilar" }) });
   const [form, setForm] = useState<Form>(() => fromCar(car));
   const [baseline, setBaseline] = useState(() => JSON.stringify(car ? fromCar(car) : form));
   const [titleTouched, setTitleTouched] = useState(!!car);
   const [uploading, setUploading] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
+  const [lookupBusy, setLookupBusy] = useState(false);
+  const [lookupInfo, setLookupInfo] = useState<string | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [blocketOpen, setBlocketOpen] = useState(false);
   const allowLeave = useRef(false);
 
   const dirty = JSON.stringify(form) !== baseline;
@@ -278,6 +386,52 @@ function CarEditor({ car }: { car?: AdminCar }) {
   });
 
   const set = useCallback(<K extends keyof Form>(k: K, v: Form[K]) => setForm((f) => ({ ...f, [k]: v })), []);
+  const setFact = useCallback(<K extends keyof CarFacts>(k: K, v: CarFacts[K]) => setForm((f) => ({ ...f, facts: { ...f.facts, [k]: v } })), []);
+  const toggleEquipment = (item: string) =>
+    setFact("equipment", form.facts.equipment.includes(item) ? form.facts.equipment.filter((e) => e !== item) : [...form.facts.equipment, item]);
+
+  async function onLookup() {
+    if (!form.regNumber.trim()) return toast("Skriv registreringsnumret först.", "info");
+    setLookupBusy(true);
+    try {
+      const v = await lookupVehicle(form.regNumber);
+      setForm((f) => fromVehicle(v, f));
+      const got = [v.make && v.model && `${v.make} ${v.model}`, v.year, v.mileageKm != null && `${num(v.mileageKm / 10)} mil`, v.owners != null && `${v.owners} ägare`]
+        .filter(Boolean)
+        .join(" · ");
+      setLookupInfo(`Hämtat från registerutdraget${got ? `: ${got}` : ""}. Kontrollera uppgifterna nedan.`);
+      toast("Bilens uppgifter är ifyllda");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Kunde inte hämta uppgifterna.", "error");
+    } finally {
+      setLookupBusy(false);
+    }
+  }
+
+  async function onWriteWithAi() {
+    if (!form.make.trim() || !form.model.trim()) return toast("Fyll i minst märke och modell först.", "info");
+    const hasText = form.description.trim() || form.highlight.trim() || form.highlights.length || form.thingsToNote.length;
+    if (
+      hasText &&
+      !(await confirm({
+        title: "Skriva om annonsen?",
+        message: "AI:n skriver ny rubrik, säljtext och beskrivning. Det som står där nu ersätts (men tas med som underlag).",
+        confirmLabel: "Skriv om",
+      }))
+    )
+      return;
+    setAiBusy(true);
+    try {
+      const ad = await writeAdWithAi(aiInput(form));
+      setTitleTouched(true);
+      setForm((f) => ({ ...f, ...ad }));
+      toast("Annonsen är skriven – läs igenom och justera");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "AI:n kunde inte skriva annonsen.", "error");
+    } finally {
+      setAiBusy(false);
+    }
+  }
 
   // Rubriken föreslås automatiskt tills man skriver en egen
   useEffect(() => {
@@ -370,6 +524,45 @@ function CarEditor({ car }: { car?: AdminCar }) {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="space-y-6">
+          <Section title="Hämta bilens uppgifter" description="Skriv registreringsnumret och hämta allt från Transportstyrelsen – eller fyll i själv nedan.">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+              <Field label="Registreringsnummer" className="sm:w-56">
+                <Input
+                  value={form.regNumber}
+                  onChange={(e) => set("regNumber", e.target.value.toUpperCase())}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      onLookup();
+                    }
+                  }}
+                  placeholder="ABC 123"
+                  maxLength={10}
+                  autoCapitalize="characters"
+                  className="font-semibold tracking-wider"
+                />
+              </Field>
+              <Btn variant="primary" icon={<Search size={16} />} loading={lookupBusy} onClick={onLookup} disabled={!form.regNumber.trim()}>
+                Hämta från Transportstyrelsen
+              </Btn>
+            </div>
+            {lookupInfo && <p className="rounded-[12px] bg-ios-green/10 px-4 py-2.5 text-[14px] text-ios-label">{lookupInfo}</p>}
+            <details className="rounded-[12px] bg-ios-fill2 px-4 py-3 text-[14px] text-ios-secondary">
+              <summary className="cursor-pointer font-medium text-ios-label">Så fungerar det</summary>
+              <ol className="mt-2 list-decimal space-y-1 pl-5 leading-relaxed">
+                <li>
+                  Beställ ett registerutdrag hos{" "}
+                  <a href={TS_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-ios-blue">
+                    Transportstyrelsen <ExternalLink size={12} />
+                  </a>{" "}
+                  (BankID) med <span className="font-mono text-ios-label">{LOOKUP_INBOX}</span> som mottagare.
+                </li>
+                <li>Vänta någon minut tills mejlet har kommit fram.</li>
+                <li>Tryck på ”Hämta från Transportstyrelsen” – märke, modell, år, färg, miltal, ägare och besiktning fylls i.</li>
+              </ol>
+            </details>
+          </Section>
+
           <Section title="Bilder" description="Välj flera bilder på en gång. De beskärs automatiskt till 4:3 – tryck på en bild för att justera.">
             <ImageManager initial={form.images} onChange={onImages} onBusyChange={setUploading} />
           </Section>
@@ -457,6 +650,84 @@ function CarEditor({ car }: { car?: AdminCar }) {
             </div>
           </Section>
 
+          <Section title="Mer om bilen" description="Ju mer du fyller i, desto bättre blir AI-texten. Allt är valfritt och syns inte på webbplatsen.">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <Field label="Utförande / motor">
+                <Input value={form.facts.trim ?? ""} onChange={(e) => setFact("trim", e.target.value)} placeholder="D4 Momentum" maxLength={100} />
+              </Field>
+              <Field label="Hästkrafter">
+                <Input inputMode="numeric" value={form.facts.horsepower ?? ""} onChange={(e) => setFact("horsepower", e.target.value)} suffix="hk" placeholder="181" maxLength={10} />
+              </Field>
+              <Field label="Drivning">
+                <Select value={form.facts.drive ?? ""} onChange={(e) => setFact("drive", e.target.value)}>
+                  <option value="">–</option>
+                  <option>Tvåhjulsdrift</option>
+                  <option>Fyrhjulsdrift</option>
+                </Select>
+              </Field>
+              <Field label="Antal ägare">
+                <Input inputMode="numeric" value={form.facts.owners ?? ""} onChange={(e) => setFact("owners", e.target.value)} placeholder="2" maxLength={10} />
+              </Field>
+              <Field label="Servicehistorik">
+                <Select value={form.facts.serviceHistory ?? ""} onChange={(e) => setFact("serviceHistory", e.target.value)}>
+                  <option value="">–</option>
+                  {SERVICE_HISTORY.map((s) => (
+                    <option key={s}>{s}</option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Antal nycklar">
+                <Input inputMode="numeric" value={form.facts.keys ?? ""} onChange={(e) => setFact("keys", e.target.value)} placeholder="2" maxLength={10} />
+              </Field>
+              <Field label="Senast besiktigad">
+                <Input type="date" value={form.facts.lastInspection ?? ""} onChange={(e) => setFact("lastInspection", e.target.value)} />
+              </Field>
+              <Field label="Nästa besiktning senast">
+                <Input type="date" value={form.facts.nextInspection ?? ""} onChange={(e) => setFact("nextInspection", e.target.value)} />
+              </Field>
+              <Field label="Däck">
+                <Input value={form.facts.tires ?? ""} onChange={(e) => setFact("tires", e.target.value)} placeholder="Nya vinterdäck på fälg" maxLength={100} />
+              </Field>
+            </div>
+            <Field label="Utrustning" hint="Tryck för att välja. Lägg till annat under ”Övrigt” nedan.">
+              <div className="flex flex-wrap gap-1.5">
+                {[...new Set([...EQUIPMENT, ...form.facts.equipment])].map((item) => {
+                  const on = form.facts.equipment.includes(item);
+                  return (
+                    <button
+                      key={item}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => toggleEquipment(item)}
+                      className={cn(
+                        "rounded-full px-3 py-1.5 text-[13px] font-medium transition",
+                        on ? "bg-ios-blue text-white" : "bg-ios-fill2 text-ios-label hover:bg-ios-fill",
+                      )}
+                    >
+                      {item}
+                    </button>
+                  );
+                })}
+              </div>
+            </Field>
+            <Field label="Övrigt till AI:n" hint="Skriv fritt och kortfattat – t.ex. vad som är gjort, extrautrustning, brister och historik.">
+              <TextArea
+                value={form.facts.notes}
+                onChange={(e) => setFact("notes", e.target.value)}
+                placeholder="Kamrem bytt 2023 vid 15 000 mil. Ny koppling. Stenskott i vindrutan. Rökfri, en ägare de senaste 8 åren."
+              />
+            </Field>
+            <div className="flex flex-col items-start gap-2 rounded-[12px] bg-gradient-to-br from-ios-blue/10 to-ios-blue/[.03] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-[15px] font-semibold">Låt AI:n skriva annonsen</p>
+                <p className="text-[13px] text-ios-secondary">Rubrik, säljtext, beskrivning, höjdpunkter och ”att känna till” – du kan ändra allt efteråt.</p>
+              </div>
+              <Btn variant="primary" icon={aiBusy ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />} disabled={aiBusy} onClick={onWriteWithAi}>
+                {aiBusy ? "Skriver …" : "Skriv annonsen med AI"}
+              </Btn>
+            </div>
+          </Section>
+
           <Section title="Beskrivning">
             <Field label="Beskrivning">
               <TextArea value={form.description} onChange={(e) => set("description", e.target.value)} placeholder="Berätta om bilen – historik, utrustning, varför den är ett bra köp." />
@@ -518,6 +789,12 @@ function CarEditor({ car }: { car?: AdminCar }) {
 
           {car && <BidsCard car={car} />}
 
+          <Section title="Blocket" description="Allt du behöver för att lägga upp bilen på Blocket – färdigt att kopiera.">
+            <Btn variant="tinted" icon={<Store size={16} />} onClick={() => setBlocketOpen(true)} className="w-full">
+              Lägg upp på Blocket
+            </Btn>
+          </Section>
+
           <Section title="Intern anteckning" description="Syns bara här i admin.">
             <TextArea value={form.adminNote} onChange={(e) => set("adminNote", e.target.value)} placeholder="T.ex. inköpspris, åtgärder, nycklar …" />
           </Section>
@@ -531,6 +808,7 @@ function CarEditor({ car }: { car?: AdminCar }) {
         </div>
       </div>
       {sheets}
+      {blocketOpen && <BlocketSheet open onClose={() => setBlocketOpen(false)} car={toInput(form)} carId={car?.id} />}
     </div>
   );
 }

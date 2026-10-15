@@ -90,9 +90,27 @@ type Row = Record<string, any>;
 /* Typer                                                                */
 /* ------------------------------------------------------------------ */
 
+/** Extra uppgifter om bilen som AI:n och Blocket-hjälpen använder. Visas bara i admin. */
+export interface CarFacts {
+  owners?: string;
+  firstRegistered?: string;
+  lastInspection?: string;
+  nextInspection?: string;
+  horsepower?: string;
+  keys?: string;
+  serviceHistory?: string;
+  drive?: string;
+  tires?: string;
+  trim?: string;
+  equipment: string[];
+  notes: string;
+}
+
 export interface AdminCar extends Car {
   reservePrice?: number;
   adminNote: string;
+  regNumber: string;
+  facts: CarFacts;
   createdAt: string;
   updatedAt: string;
 }
@@ -101,7 +119,44 @@ export interface AdminCar extends Car {
 export type CarInput = Omit<Car, "id" | "bids" | "extended" | "hasReserve" | "reserveMet"> & {
   reservePrice?: number | null;
   adminNote: string;
+  regNumber: string;
+  facts: CarFacts;
 };
+
+/** Fordonsuppgifter från ett registerutdrag hos Transportstyrelsen. */
+export interface VehicleData {
+  regNumber: string;
+  make: string | null;
+  model: string | null;
+  year: number | null;
+  color: string | null;
+  fuel: string | null;
+  gearbox: string | null;
+  bodyType: string | null;
+  vehicleStatus: string | null;
+  owners: number | null;
+  firstRegistered: string | null;
+  lastInspection: string | null;
+  nextInspection: string | null;
+  mileageKm: number | null;
+  horsepower: number | null;
+  emailReceivedAt: string | null;
+}
+
+/** Annonstext som AI:n skriver. */
+export interface AdText {
+  title: string;
+  highlight: string;
+  description: string;
+  conditionSummary: string;
+  highlights: string[];
+  thingsToNote: string[];
+}
+
+export const lookupVehicle = (regNumber: string) =>
+  request<VehicleData>("/vehicle-lookup", { method: "POST", body: { regNumber } });
+
+export const writeAdWithAi = (car: Record<string, unknown>) => request<AdText>("/ai-ad", { method: "POST", body: car });
 
 export interface ContactMessage {
   kind: "contact";
@@ -186,6 +241,8 @@ const toAdminCar = (r: Row): AdminCar => ({
   ...toCar(r),
   reservePrice: r.reserve_price ?? undefined,
   adminNote: r.admin_note ?? "",
+  regNumber: r.reg_number ?? "",
+  facts: { equipment: [], notes: "", ...(r.facts ?? {}) },
   createdAt: r.created_at,
   updatedAt: r.updated_at,
   bids: (r.bids ?? []).map(toBid),
