@@ -74,7 +74,11 @@ export function Footer() {
             Konceptsajt för Sjödalen Bilar AB – texter, bilder, bud och recensioner på sidan är
             exempel i demonstrationssyfte.
           </p>
-          <p className="mt-1">© {new Date().getFullYear()} Sjödalen Bilar AB</p>
+          <p className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+            <span>© {new Date().getFullYear()} Sjödalen Bilar AB</span>
+            <Link to="/auktion/villkor" className="hover:text-white">Auktionsvillkor</Link>
+            <Link to="/integritet" className="hover:text-white">Integritetspolicy</Link>
+          </p>
         </div>
       </div>
     </footer>

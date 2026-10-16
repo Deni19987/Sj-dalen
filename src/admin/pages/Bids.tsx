@@ -67,8 +67,8 @@ export function BidsPage() {
 
   function exportCsv() {
     downloadCsv(`bud-${new Date().toISOString().slice(0, 10)}.csv`, [
-      ["Tid", "Bil", "Namn", "E-post", "Telefon", "Belopp", "Leder"],
-      ...rows.map((r) => [fmtDateTime(r.at), r.car.title, r.name, r.email, r.phone, r.amount, r.leading ? "Ja" : ""]),
+      ["Tid", "Bil", "Namn", "E-post", "Telefon", "Belopp", "Leder", "Godkända auktionsvillkor"],
+      ...rows.map((r) => [fmtDateTime(r.at), r.car.title, r.name, r.email, r.phone, r.amount, r.leading ? "Ja" : "", r.termsVersion ?? ""]),
     ]);
   }
 

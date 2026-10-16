@@ -54,6 +54,7 @@ function BidForm({ car }: { car: Car }) {
   const [bidder, setBidder] = useState(readBidder);
   const [amount, setAmount] = useState(String(min));
   const [result, setResult] = useState<BidResult | null>(null);
+  const [accepted, setAccepted] = useState(false);
 
   // Om någon annan bjuder över medan sidan är öppen: höj förslaget till nytt minsta bud.
   useEffect(() => {
@@ -75,8 +76,10 @@ function BidForm({ car }: { car: Car }) {
     if (!EMAIL_RE.test(email)) return setResult({ ok: false, message: "Ange en giltig e-postadress." });
     if (phone.replace(/\D/g, "").length < 6) return setResult({ ok: false, message: "Ange ditt telefonnummer." });
     if (!Number.isFinite(value)) return setResult({ ok: false, message: "Ange ett giltigt belopp." });
+    if (!accepted)
+      return setResult({ ok: false, message: "Du behöver godkänna auktionsvillkoren för att lägga bud." });
     placeBid.mutate(
-      { carId: car.id, name, email, phone, amount: value },
+      { carId: car.id, name, email, phone, amount: value, acceptTerms: true },
       {
         onSuccess: (r) => {
           setResult(r);
@@ -118,6 +121,21 @@ function BidForm({ car }: { car: Car }) {
           className={INPUT}
         />
       </div>
+      <label className="mt-3 flex cursor-pointer items-start gap-3 text-sm text-graphite-700">
+        <input
+          type="checkbox"
+          checked={accepted}
+          onChange={(e) => setAccepted(e.target.checked)}
+          className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer rounded accent-blue-500"
+        />
+        <span>
+          Jag har läst och godkänner{" "}
+          <Link to="/auktion/villkor" target="_blank" className="font-semibold text-blue-600 hover:underline">
+            auktionsvillkoren
+          </Link>{" "}
+          och förstår att <strong>mitt bud är bindande och inte kan dras tillbaka</strong>.
+        </span>
+      </label>
       <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto]">
         <div className="relative">
           <input
@@ -136,8 +154,13 @@ function BidForm({ car }: { car: Car }) {
           <Gavel size={16} /> Lägg bud
         </Button>
       </div>
-      <p className="mt-2 text-xs text-graphite-400">
-        Bara ditt namn visas i budhistoriken. E-post och telefon använder vi för att kontakta dig om du vinner.
+      <p className="mt-3 text-xs text-graphite-400">
+        Bara ditt namn visas i budhistoriken. E-post och telefon använder vi för att kontakta dig om du vinner – läs
+        mer i vår{" "}
+        <Link to="/integritet" target="_blank" className="underline hover:text-graphite-600">
+          integritetspolicy
+        </Link>
+        .
       </p>
       {result && (
         <p className={`mt-3 text-sm font-semibold ${result.ok ? "text-blue-600" : "text-red-600"}`}>

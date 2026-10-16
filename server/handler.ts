@@ -3,6 +3,7 @@
 
 import { ensureSchema, handleAdmin, serveImage } from "./admin";
 import type { AuthConfig } from "./auth";
+import { AUCTION_TERMS_VERSION } from "../src/lib/auction";
 import {
   body,
   dbError,
@@ -84,6 +85,9 @@ export function createHandler(query: Query, options: HandlerOptions) {
 
         case "POST /bids": {
           const b = await body(req);
+          if (b.acceptTerms !== true)
+            throw new HttpError(400, "Du behöver godkänna auktionsvillkoren för att lägga bud.");
+          await ensureSchema(query);
           const rows = await query("select place_bid($1, $2, $3, $4, $5) as result", [
             str(b.carId, "bil", { max: 100 }),
             str(b.name, "namn", { max: 80 }),
@@ -91,7 +95,15 @@ export function createHandler(query: Query, options: HandlerOptions) {
             email(b.email),
             str(b.phone, "telefon", { min: 6, max: 40 }),
           ]);
-          return json(rows[0].result);
+          const result = rows[0].result;
+          // Vilken version av villkoren budgivaren godkände. Bud på samma bil har alltid olika belopp.
+          if (result?.ok)
+            await query("update bids set terms_version = $3 where car_id = $1 and amount = $2", [
+              b.carId,
+              b.amount,
+              AUCTION_TERMS_VERSION,
+            ]);
+          return json(result);
         }
 
         case "POST /bookings": {

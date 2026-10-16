@@ -4,6 +4,9 @@ import type { Car } from "./types";
 export const EXTEND_WINDOW_MS = 5 * 60_000;
 export const EXTEND_BY_MS = 5 * 60_000;
 
+/** Version av auktionsvillkoren. Sparas med varje bud – byt när villkoren ändras. */
+export const AUCTION_TERMS_VERSION = "2026-10-16";
+
 export function currentPrice(car: Car) {
   if (car.status === "sold" && car.soldPrice) return car.soldPrice;
   if (car.bids.length === 0) return car.startPrice;

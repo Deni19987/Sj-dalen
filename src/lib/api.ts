@@ -38,6 +38,7 @@ export const toBid = (r: Row): Bid => ({
   amount: r.amount,
   at: r.created_at,
   email: r.email ?? undefined,
+  termsVersion: r.terms_version ?? undefined,
   phone: r.phone ?? undefined,
 });
 

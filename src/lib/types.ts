@@ -21,6 +21,8 @@ export interface Bid {
   /** Bara i admin */
   email?: string;
   phone?: string;
+  /** Bara i admin: vilken version av auktionsvillkoren budgivaren godkände */
+  termsVersion?: string;
 }
 
 export interface Car {
@@ -131,6 +133,8 @@ export interface BidInput {
   amount: number;
   email: string;
   phone: string;
+  /** Budgivaren har godkänt auktionsvillkoren (krävs). */
+  acceptTerms: boolean;
 }
 
 export interface BidResult {

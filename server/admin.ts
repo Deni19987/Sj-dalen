@@ -94,7 +94,7 @@ const CAR_SELECT = `
     coalesce(
       (select json_agg(json_build_object(
                 'id', b.id, 'name', b.name, 'amount', b.amount, 'created_at', b.created_at,
-                'email', b.email, 'phone', b.phone)
+                'email', b.email, 'phone', b.phone, 'terms_version', b.terms_version)
               order by b.created_at)
          from bids b where b.car_id = c.id),
       '[]'::json) as bids
@@ -261,6 +261,11 @@ export function ensureSchema(query: Query) {
     const nullable = (c: string) => cols.some((r) => r.column_name === c && r.is_nullable === "YES");
     if (!has("reg_number")) await query("alter table public.cars add column if not exists reg_number text not null default ''");
     if (!has("facts")) await query("alter table public.cars add column if not exists facts jsonb not null default '{}'");
+    const bidCols = await query(
+      `select 1 from information_schema.columns
+        where table_schema = 'public' and table_name = 'bids' and column_name = 'terms_version'`,
+    );
+    if (bidCols.length === 0) await query("alter table public.bids add column if not exists terms_version text");
     // Utkast får sakna årsmodell, miltal och utropspris.
     for (const c of ["year", "mileage_km", "start_price"])
       if (!nullable(c)) await query(`alter table public.cars alter column ${c} drop not null`);

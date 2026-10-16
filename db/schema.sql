@@ -134,6 +134,8 @@ alter table public.cars alter column start_price drop not null;
 -- Budgivarens kontaktuppgifter (visas bara i admin)
 alter table public.bids add column if not exists email text;
 alter table public.bids add column if not exists phone text;
+-- Version av auktionsvillkoren som budgivaren godkände (se AUCTION_TERMS_VERSION i src/lib/auction.ts)
+alter table public.bids add column if not exists terms_version text;
 
 -- Bilder: själva filerna ligger i Netlify Blobs, här finns metadata
 create table if not exists public.images (
