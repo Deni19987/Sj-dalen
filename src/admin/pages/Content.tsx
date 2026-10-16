@@ -3,13 +3,14 @@ import { ChevronDown, ChevronUp, HelpCircle, Pencil, Plus, Trash2, Wrench } from
 import type { Faq, Service, ServiceCategory } from "../../lib/types";
 import { useContent, useDeleteContent, useReorderContent, useSaveContent, type ContentType } from "../api";
 import { kr } from "../helpers";
+import { ContactInfo } from "./ContactInfo";
 import { Btn, Card, EmptyState, ErrorBlock, Field, Input, LoadingBlock, PageHeader, Pill, Segmented, Select, Sheet, TextArea, Toggle, useFeedback, useRun } from "../ui";
 
 const CATEGORIES: ServiceCategory[] = ["Underhåll", "Reparation", "Besiktning", "Däck", "Övrigt"];
 
 export function ContentPage() {
   const { data, isLoading, error, refetch } = useContent();
-  const [tab, setTab] = useState<ContentType>("services");
+  const [tab, setTab] = useState<ContentType | "contact">("services");
   const [editing, setEditing] = useState<{ type: ContentType; item: Service | Faq | null } | null>(null);
 
   return (
@@ -18,9 +19,11 @@ export function ContentPage() {
         title="Innehåll"
         subtitle="Texter och priser som visas på webbplatsen. Ändringar syns inom en minut."
         actions={
-          <Btn variant="primary" icon={<Plus size={17} />} onClick={() => setEditing({ type: tab, item: null })}>
-            {tab === "services" ? "Ny tjänst" : "Ny fråga"}
-          </Btn>
+          tab !== "contact" && (
+            <Btn variant="primary" icon={<Plus size={17} />} onClick={() => setEditing({ type: tab, item: null })}>
+              {tab === "services" ? "Ny tjänst" : "Ny fråga"}
+            </Btn>
+          )
         }
       />
       <Segmented
@@ -30,11 +33,13 @@ export function ContentPage() {
         options={[
           { value: "services", label: "Tjänster & priser" },
           { value: "faqs", label: "Vanliga frågor" },
+          { value: "contact", label: "Kontakt" },
         ]}
       />
 
-      {error && <ErrorBlock error={error} retry={() => refetch()} />}
-      {isLoading && <LoadingBlock />}
+      {tab === "contact" && <ContactInfo />}
+      {tab !== "contact" && error && <ErrorBlock error={error} retry={() => refetch()} />}
+      {tab !== "contact" && isLoading && <LoadingBlock />}
 
       {data && tab === "services" && (
         <OrderedList
