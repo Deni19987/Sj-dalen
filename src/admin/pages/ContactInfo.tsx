@@ -5,11 +5,19 @@ import type { SiteSettings } from "../../lib/types";
 import { useSaveSettings } from "../api";
 import { Btn, Card, Field, Input, LoadingBlock, useRun } from "../ui";
 
-type ContactFields = Pick<SiteSettings, "phone" | "email" | "address" | "hours">;
+type ContactFields = Pick<SiteSettings, "phone" | "email" | "address" | "hours" | "company" | "auction">;
+type AuctionNumber = "paymentDays" | "pickupDays" | "storageFee" | "cancelAfterDays";
 
-const pick = ({ phone, email, address, hours }: SiteSettings): ContactFields => ({ phone, email, address, hours });
+const pick = ({ phone, email, address, hours, company, auction }: SiteSettings): ContactFields => ({
+  phone,
+  email,
+  address,
+  hours,
+  company,
+  auction,
+});
 
-/** Kontaktuppgifter och öppettider (fliken på Innehåll). */
+/** Kontaktuppgifter, öppettider, företagsuppgifter och auktionsvillkorens siffror (fliken Kontakt på Innehåll). */
 export function ContactInfo() {
   const { data, isPlaceholderData } = useSettings();
   if (!data || isPlaceholderData) return <LoadingBlock />;
@@ -23,6 +31,12 @@ function ContactInfoForm({ settings }: { settings: SiteSettings }) {
   const run = useRun();
   const dirty = JSON.stringify(s) !== baseline;
   const set = <K extends keyof ContactFields>(k: K, v: ContactFields[K]) => setS((x) => ({ ...x, [k]: v }));
+  const setCompany = (patch: Partial<ContactFields["company"]>) => setS((x) => ({ ...x, company: { ...x.company, ...patch } }));
+  const setAuction = (k: AuctionNumber, v: string) =>
+    setS((x) => ({ ...x, auction: { ...x.auction, [k]: v === "" ? ("" as unknown as number) : Number(v) } }));
+  const auctionChanged = (["paymentDays", "pickupDays", "storageFee", "cancelAfterDays"] as const).some(
+    (k) => s.auction[k] !== settings.auction[k],
+  );
 
   useEffect(() => {
     const onUnload = (e: BeforeUnloadEvent) => dirty && e.preventDefault();
@@ -75,6 +89,47 @@ function ContactInfoForm({ settings }: { settings: SiteSettings }) {
               Lägg till rad
             </Btn>
           </div>
+        </Card>
+
+        <Card>
+          <h2 className="text-[17px] font-semibold">Företagsuppgifter</h2>
+          <p className="text-[13px] text-ios-secondary">Visas i sidfoten, auktionsvillkoren och integritetspolicyn.</p>
+          <div className="mt-4 space-y-4">
+            <Field label="Företagsnamn" hint="Som det är registrerat hos Bolagsverket.">
+              <Input value={s.company.name} onChange={(e) => setCompany({ name: e.target.value })} />
+            </Field>
+            <Field label="Organisationsnummer">
+              <Input value={s.company.orgNumber} placeholder="556123-4567" onChange={(e) => setCompany({ orgNumber: e.target.value })} />
+            </Field>
+            <Field label="Momsregistreringsnummer (om ni har ett)">
+              <Input value={s.company.vatNumber} placeholder="SE556123456701" onChange={(e) => setCompany({ vatNumber: e.target.value })} />
+            </Field>
+          </div>
+        </Card>
+
+        <Card>
+          <h2 className="text-[17px] font-semibold">Auktionsvillkor</h2>
+          <p className="text-[13px] text-ios-secondary">Siffrorna som står i auktionsvillkoren om betalning och hämtning.</p>
+          <div className="mt-4 grid grid-cols-2 gap-4">
+            <Field label="Betalning inom (bankdagar)">
+              <Input type="number" inputMode="numeric" min={1} max={30} value={s.auction.paymentDays} onChange={(e) => setAuction("paymentDays", e.target.value)} />
+            </Field>
+            <Field label="Hämtning inom (dagar)">
+              <Input type="number" inputMode="numeric" min={1} max={60} value={s.auction.pickupDays} onChange={(e) => setAuction("pickupDays", e.target.value)} />
+            </Field>
+            <Field label="Förvaringsavgift (kr/dygn)">
+              <Input type="number" inputMode="numeric" min={0} max={10000} value={s.auction.storageFee} onChange={(e) => setAuction("storageFee", e.target.value)} />
+            </Field>
+            <Field label="Köpet kan hävas efter (dagar)">
+              <Input type="number" inputMode="numeric" min={7} max={180} value={s.auction.cancelAfterDays} onChange={(e) => setAuction("cancelAfterDays", e.target.value)} />
+            </Field>
+          </div>
+          {auctionChanged && (
+            <p className="mt-4 rounded-[12px] bg-ios-orange/10 px-3 py-2.5 text-[13px] text-ios-label">
+              När du sparar får villkoren ett nytt datum. Ändringen gäller bud som läggs från och med nu – bud som redan
+              lagts gäller enligt villkoren budgivaren godkände.
+            </p>
+          )}
         </Card>
       </div>
       <div className="mt-6 flex justify-end">

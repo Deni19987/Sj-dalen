@@ -22,7 +22,8 @@ export function PrivacyPage() {
     >
       <LegalSection n={1} title="Vem ansvarar för dina uppgifter">
         <p>
-          Sjödalen Bilar AB är personuppgiftsansvarig.
+          {settings?.company.name || "Sjödalen Bilar AB"}
+          {settings?.company.orgNumber && <> (org.nr {settings.company.orgNumber})</>} är personuppgiftsansvarig.
           {settings?.address && <> Adress: {settings.address}.</>}
           {settings?.email && <> E-post: {settings.email}.</>}
           {settings?.phone && <> Telefon: {settings.phone}.</>}
@@ -64,7 +65,7 @@ export function PrivacyPage() {
 
       <LegalSection n={4} title="Vilka som får ta del av uppgifterna">
         <p>
-          Bara vi på Sjödalen Bilar har tillgång till dina kontaktuppgifter. Webbplatsen och databasen drivs av
+          Bara vi på {settings?.company.name || "Sjödalen Bilar AB"} har tillgång till dina kontaktuppgifter. Webbplatsen och databasen drivs av
           leverantörer (Netlify och Neon) som lagrar uppgifterna för vår räkning och enligt våra instruktioner. Om
           en leverantör behandlar uppgifter utanför EU/EES sker det med stöd av EU-kommissionens beslut om
           adekvat skyddsnivå eller EU:s standardavtalsklausuler.

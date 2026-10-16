@@ -3,7 +3,7 @@
 
 import { ensureSchema, handleAdmin, serveImage } from "./admin";
 import type { AuthConfig } from "./auth";
-import { AUCTION_TERMS_VERSION } from "../src/lib/auction";
+import { termsEffectiveDate } from "../src/lib/auction";
 import {
   body,
   dbError,
@@ -97,12 +97,14 @@ export function createHandler(query: Query, options: HandlerOptions) {
           ]);
           const result = rows[0].result;
           // Vilken version av villkoren budgivaren godkände. Bud på samma bil har alltid olika belopp.
-          if (result?.ok)
+          if (result?.ok) {
+            const settings = await query("select value from settings where key = 'site'");
             await query("update bids set terms_version = $3 where car_id = $1 and amount = $2", [
               b.carId,
               b.amount,
-              AUCTION_TERMS_VERSION,
+              termsEffectiveDate(settings[0]?.value?.auction),
             ]);
+          }
           return json(result);
         }
 

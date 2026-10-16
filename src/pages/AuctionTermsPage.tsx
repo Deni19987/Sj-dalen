@@ -1,17 +1,19 @@
 import { Link } from "@tanstack/react-router";
 import { LegalCallout, LegalPage, LegalSection } from "../components/LegalPage";
-import { AUCTION_TERMS_VERSION } from "../lib/auction";
+import { AUCTION_DEFAULTS, termsEffectiveDate } from "../lib/auction";
 import { formatLongDate } from "../lib/format";
 import { useSettings } from "../lib/queries";
 
 export function AuctionTermsPage() {
   const { data: settings } = useSettings();
+  const company = settings?.company.name || "Sjödalen Bilar AB";
+  const a = settings?.auction ?? AUCTION_DEFAULTS;
 
   return (
     <LegalPage
       kicker="Bilauktion"
       title="Auktionsvillkor"
-      updated={formatLongDate(AUCTION_TERMS_VERSION)}
+      updated={formatLongDate(termsEffectiveDate(settings?.auction))}
       intro={
         <LegalCallout title="Ditt bud är bindande">
           <p>
@@ -28,8 +30,10 @@ export function AuctionTermsPage() {
     >
       <LegalSection n={1} title="Om villkoren">
         <p>
-          Villkoren gäller när du lägger bud på och köper bilar på Sjödalen Bilar AB:s bilauktion på den här
-          webbplatsen. Säljare är Sjödalen Bilar AB. Bilarna på auktionen är bilar vi själva äger.
+          Villkoren gäller när du lägger bud på och köper bilar på {company}s bilauktion på den här webbplatsen.
+          Säljare är {company}
+          {settings?.company.orgNumber && <> (org.nr {settings.company.orgNumber})</>}. Bilarna på auktionen är bilar
+          vi själva äger.
         </p>
         <p>
           Genom att kryssa i rutan vid budformuläret godkänner du villkoren. Vi sparar vilken version av villkoren
@@ -90,7 +94,10 @@ export function AuctionTermsPage() {
         <ul>
           <li>Vi kontaktar dig senast nästa vardag efter auktionens slut med betalningsuppgifter.</li>
           <li>Ditt vinnande bud är priset för bilen. Det tillkommer ingen avgift på budet.</li>
-          <li>Betalning sker med banköverföring och ska vara oss tillhanda inom tre bankdagar från att du fått betalningsuppgifterna.</li>
+          <li>
+            Betalning sker med banköverföring och ska vara oss tillhanda inom {a.paymentDays}{" "}
+            {a.paymentDays === 1 ? "bankdag" : "bankdagar"} från att du fått betalningsuppgifterna.
+          </li>
           <li>Bilen lämnas ut när betalningen kommit in.</li>
         </ul>
       </LegalSection>
@@ -98,13 +105,14 @@ export function AuctionTermsPage() {
       <LegalSection n={7} title="Hämtning och ägarbyte">
         <ul>
           <li>
-            Bilen hämtas hos oss{settings?.address ? ` på ${settings.address}` : " i Sjödalen"} inom sju dagar från att
-            betalningen kommit in. Boka tid med oss.
+            Bilen hämtas hos oss{settings?.address ? ` på ${settings.address}` : " i Sjödalen"} inom {a.pickupDays}{" "}
+            {a.pickupDays === 1 ? "dag" : "dagar"} från att betalningen kommit in. Boka tid med oss.
           </li>
           <li>Vi gör ägarbytet tillsammans med dig vid hämtningen. Bilen ska vara trafikförsäkrad från ägarbytet – ordna det innan du kör iväg.</li>
           <li>
-            Hämtas bilen inte i tid tar vi ut en förvaringsavgift på 150 kr per påbörjat dygn. Är bilen inte hämtad
-            inom 30 dagar har vi rätt att häva köpet och sälja bilen till någon annan.
+            {a.storageFee > 0 && <>Hämtas bilen inte i tid tar vi ut en förvaringsavgift på {a.storageFee} kr per påbörjat dygn. </>}
+            Är bilen inte hämtad inom {a.cancelAfterDays} dagar har vi rätt att häva köpet och sälja bilen till någon
+            annan.
           </li>
         </ul>
       </LegalSection>
@@ -201,7 +209,9 @@ export function AuctionTermsPage() {
 
       <LegalSection n={15} title="Kontakt">
         <p>
-          Sjödalen Bilar AB
+          {company}
+          {settings?.company.orgNumber && <><br />Org.nr: {settings.company.orgNumber}</>}
+          {settings?.company.vatNumber && <><br />Momsreg.nr: {settings.company.vatNumber}</>}
           {settings?.address && <><br />{settings.address}</>}
           {settings?.phone && <><br />Telefon: {settings.phone}</>}
           {settings?.email && <><br />E-post: {settings.email}</>}

@@ -75,7 +75,10 @@ export function Footer() {
             exempel i demonstrationssyfte.
           </p>
           <p className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
-            <span>© {new Date().getFullYear()} Sjödalen Bilar AB</span>
+            <span>
+              © {new Date().getFullYear()} {settings.company.name}
+              {settings.company.orgNumber && ` · Org.nr ${settings.company.orgNumber}`}
+            </span>
             <Link to="/auktion/villkor" className="hover:text-white">Auktionsvillkor</Link>
             <Link to="/integritet" className="hover:text-white">Integritetspolicy</Link>
           </p>

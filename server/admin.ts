@@ -20,6 +20,7 @@ import {
   type Query,
 } from "./http";
 import { equipmentSuggestions, writeCarAd } from "./ai";
+import { AUCTION_DEFAULTS } from "../src/lib/auction";
 import { lookupVehicle, type Env } from "./vehicle-lookup";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -236,11 +237,26 @@ function settingsValue(b: Record<string, any>) {
   const mail = str(b.email, "e-post", { max: 254 })!;
   if (!EMAIL_RE.test(mail)) throw new HttpError(400, "Ogiltig e-postadress.");
   const tone = ann.tone === "warning" ? "warning" : "info";
+  const co = (b.company ?? {}) as Record<string, unknown>;
+  const orgNumber = text(co.orgNumber, "organisationsnummer", 20);
+  if (orgNumber && !/^\d{6}-?\d{4}$/.test(orgNumber))
+    throw new HttpError(400, "Organisationsnumret ska ha formatet 556123-4567.");
+  const vatNumber = text(co.vatNumber, "momsregistreringsnummer", 20).toUpperCase().replace(/\s/g, "");
+  if (vatNumber && !/^SE\d{12}$/.test(vatNumber))
+    throw new HttpError(400, "Momsregistreringsnumret ska ha formatet SE556123456701.");
+  const au = (b.auction ?? {}) as Record<string, unknown>;
   return {
     phone: str(b.phone, "telefon", { max: 40 }),
     email: mail,
     address: str(b.address, "adress", { max: 200 }),
     hours: hours.map((h: any) => ({ label: str(h?.label, "dag", { max: 40 }), value: str(h?.value, "tid", { max: 40 }) })),
+    company: { name: str(co.name, "företagsnamn", { max: 120 })!, orgNumber, vatNumber },
+    auction: {
+      paymentDays: int(au.paymentDays, "betalningsfrist", 1, 30),
+      pickupDays: int(au.pickupDays, "hämtningsfrist", 1, 60),
+      storageFee: int(au.storageFee, "förvaringsavgift", 0, 10_000),
+      cancelAfterDays: int(au.cancelAfterDays, "dagar innan köpet hävs", 7, 180),
+    } as { paymentDays: number; pickupDays: number; storageFee: number; cancelAfterDays: number; updatedAt?: string },
     announcement: { enabled: bool(ann.enabled), text: text(ann.text, "notis", 200), link, tone },
   };
 }
@@ -597,6 +613,11 @@ export async function handleAdmin(req: Request, path: string, deps: AdminDeps): 
     /* ---------------- Inställningar ---------------- */
     case "PUT settings": {
       const value = settingsValue(await body(req));
+      // Ändras villkorens siffror får villkoren ett nytt "gäller från"-datum (sparas med varje bud).
+      const prev = { ...AUCTION_DEFAULTS, ...(await query("select value from settings where key = 'site'"))[0]?.value?.auction };
+      const keys = ["paymentDays", "pickupDays", "storageFee", "cancelAfterDays"] as const;
+      const changed = keys.some((k) => prev[k] !== value.auction[k]);
+      value.auction.updatedAt = changed ? new Date().toISOString() : prev.updatedAt;
       await query(
         `insert into settings (key, value, updated_at) values ('site', $1::jsonb, now())
          on conflict (key) do update set value = excluded.value, updated_at = now()`,

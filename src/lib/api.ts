@@ -1,5 +1,5 @@
 import { seedCars, seedFaqs, seedReviews, seedServices } from "../data/seed";
-import { EXTEND_BY_MS, EXTEND_WINDOW_MS, minNextBid } from "./auction";
+import { AUCTION_DEFAULTS, EXTEND_BY_MS, EXTEND_WINDOW_MS, minNextBid } from "./auction";
 import type {
   Bid,
   BidInput,
@@ -91,6 +91,8 @@ export const DEFAULT_SETTINGS: SiteSettings = {
     { label: "Lördag", value: "10.00–14.00" },
     { label: "Söndag", value: "Stängt" },
   ],
+  company: { name: "Sjödalen Bilar AB", orgNumber: "", vatNumber: "" },
+  auction: AUCTION_DEFAULTS,
   announcement: { enabled: false, text: "", link: "", tone: "info" },
 };
 
@@ -163,7 +165,13 @@ export async function fetchBookedSlots(date: string): Promise<string[]> {
 export async function fetchSettings(): Promise<SiteSettings> {
   if (DEMO) return DEFAULT_SETTINGS;
   const data = await request<Partial<SiteSettings>>("/settings");
-  return { ...DEFAULT_SETTINGS, ...data, announcement: { ...DEFAULT_SETTINGS.announcement, ...data.announcement } };
+  return {
+    ...DEFAULT_SETTINGS,
+    ...data,
+    company: { ...DEFAULT_SETTINGS.company, ...data.company },
+    auction: { ...DEFAULT_SETTINGS.auction, ...data.auction },
+    announcement: { ...DEFAULT_SETTINGS.announcement, ...data.announcement },
+  };
 }
 
 export async function placeBid(input: BidInput): Promise<BidResult> {
