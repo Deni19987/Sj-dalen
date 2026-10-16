@@ -110,7 +110,7 @@ function ContactInfoForm({ settings }: { settings: SiteSettings }) {
         <Card>
           <h2 className="text-[17px] font-semibold">Auktionsvillkor</h2>
           <p className="text-[13px] text-ios-secondary">Siffrorna som står i auktionsvillkoren om betalning och hämtning.</p>
-          <div className="mt-4 grid grid-cols-2 gap-4">
+          <div className="mt-4 grid grid-cols-2 items-end gap-4">
             <Field label="Betalning inom (bankdagar)">
               <Input type="number" inputMode="numeric" min={1} max={30} value={s.auction.paymentDays} onChange={(e) => setAuction("paymentDays", e.target.value)} />
             </Field>
