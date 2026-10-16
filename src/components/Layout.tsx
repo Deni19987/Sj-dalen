@@ -51,7 +51,6 @@ export function Layout() {
       <main className="flex-1">
         <Outlet />
       </main>
-      {path === "/" && <CarFlowPromo variant="home" />}
       {path === "/tjanster" && <CarFlowPromo variant="tjanster" />}
       <Footer />
     </div>
