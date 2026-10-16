@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { BadgeCheck, CopyPlus, ExternalLink, EyeOff, Flag, Pencil, Repeat, Rocket, Timer, Trash2 } from "lucide-react";
 import { useCarAction, useDeleteCar, type AdminCar } from "./api";
-import { carState, highestBid, kr, telHref } from "./helpers";
+import { carState, highestBid, kr, siteUrl, telHref } from "./helpers";
 import { Btn, Field, Input, Sheet, Toggle, useFeedback, useRun, type MenuItem } from "./ui";
 
 type Dialog = { type: "sell" | "extend" | "relist"; car: AdminCar } | null;
@@ -22,7 +22,7 @@ export function useCarActions({ onDeleted }: { onDeleted?: () => void } = {}) {
     const state = carState(car);
     return [
       { label: "Redigera", icon: <Pencil size={16} />, onClick: () => navigate({ to: "/admin/bilar/$id", params: { id: car.id } }), hidden: !includeEdit },
-      { label: "Visa på webbplatsen", icon: <ExternalLink size={16} />, onClick: () => window.open(`/auktion/${car.id}`, "_blank"), hidden: state === "draft" },
+      { label: "Visa på webbplatsen", icon: <ExternalLink size={16} />, onClick: () => window.open(siteUrl(`/auktion/${car.id}`), "_blank"), hidden: state === "draft" },
       { label: "Publicera", icon: <Rocket size={16} />, onClick: () => publish(car), hidden: state !== "draft" },
       { label: "Förläng auktionen", icon: <Timer size={16} />, onClick: () => setDialog({ type: "extend", car }), hidden: state !== "live" && state !== "ending" && state !== "ended" },
       { label: "Avsluta nu", icon: <Flag size={16} />, onClick: () => endNow(car), hidden: state !== "live" && state !== "ending" },

@@ -172,6 +172,18 @@ create table if not exists public.settings (
   updated_at  timestamptz not null default now()
 );
 
+-- Personalens enheter som tar emot pushnotiser (se server/push.ts). VAPID-nycklarna ligger i settings ('vapid').
+create table if not exists public.push_subscriptions (
+  id          uuid primary key default gen_random_uuid(),
+  endpoint    text not null unique,
+  p256dh      text not null,
+  auth        text not null,
+  user_agent  text,
+  topics      text[] not null default '{bids,bookings,messages}',
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+
 -- =====================================================================
 -- Funktioner (anropas från API:t i netlify/functions)
 -- =====================================================================

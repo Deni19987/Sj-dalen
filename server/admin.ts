@@ -21,6 +21,7 @@ import {
 } from "./http";
 import { equipmentSuggestions, writeCarAd } from "./ai";
 import { AUCTION_DEFAULTS } from "../src/lib/auction";
+import { ensurePushTable, getVapid, PUSH_TOPICS, sendPush } from "./push";
 import { lookupVehicle, type Env } from "./vehicle-lookup";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -292,6 +293,63 @@ export function ensureSchema(query: Query) {
   return schemaReady;
 }
 
+/* ------------------------------------------------------------------ */
+/* Pushnotiser (en prenumeration per enhet, se server/push.ts)          */
+/* ------------------------------------------------------------------ */
+
+async function handlePush(req: Request, action: string | undefined, { query, env }: AdminDeps): Promise<Response> {
+  await ensurePushTable(query);
+  if (req.method === "GET" && !action) return json({ publicKey: (await getVapid(query, env)).publicKey }, 200, NO_CACHE);
+  if (req.method !== "POST") throw new HttpError(404, "Hittades inte.");
+  const b = await body(req);
+  const endpoint = str(b.endpoint, "endpoint", { max: 1000 })!;
+  if (!/^https:\/\//.test(endpoint)) throw new HttpError(400, "Ogiltig prenumeration.");
+  const topics = (v: unknown) => (Array.isArray(v) ? PUSH_TOPICS.filter((t) => v.includes(t)) : [...PUSH_TOPICS]);
+
+  switch (action) {
+    case "status": {
+      const row = (await query("select topics from push_subscriptions where endpoint = $1", [endpoint]))[0];
+      return json({ subscribed: !!row, topics: row?.topics ?? [...PUSH_TOPICS] }, 200, NO_CACHE);
+    }
+    case "subscribe": {
+      const keys = (b.keys ?? {}) as Record<string, unknown>;
+      const userAgent = text(b.userAgent, "enhet", 500);
+      // Samma enhet som prenumererat förut med en annan adress: ersätt den gamla.
+      if (userAgent) await query("delete from push_subscriptions where user_agent = $1 and endpoint <> $2", [userAgent, endpoint]);
+      const rows = await query(
+        `insert into push_subscriptions (endpoint, p256dh, auth, user_agent, topics) values ($1, $2, $3, $4, $5)
+         on conflict (endpoint) do update set p256dh = excluded.p256dh, auth = excluded.auth,
+           user_agent = excluded.user_agent, updated_at = now()
+         returning topics`,
+        [endpoint, str(keys.p256dh, "nyckel", { max: 200 }), str(keys.auth, "nyckel", { max: 100 }), userAgent || null, topics(b.topics)],
+      );
+      return json({ subscribed: true, topics: rows[0].topics }, 200, NO_CACHE);
+    }
+    case "topics": {
+      const rows = await query("update push_subscriptions set topics = $2, updated_at = now() where endpoint = $1 returning topics", [
+        endpoint,
+        topics(b.topics),
+      ]);
+      if (!rows.length) throw new HttpError(404, "Notiser är inte påslagna på den här enheten.");
+      return json({ subscribed: true, topics: rows[0].topics }, 200, NO_CACHE);
+    }
+    case "unsubscribe":
+      await query("delete from push_subscriptions where endpoint = $1", [endpoint]);
+      return json({ subscribed: false, topics: [...PUSH_TOPICS] }, 200, NO_CACHE);
+    case "test": {
+      const r = await sendPush(query, env, { endpoint }, {
+        title: "Testnotis",
+        body: "Notiserna fungerar på den här enheten.",
+        url: "/admin/installningar",
+        tag: "test",
+      });
+      if (r.sent === 0) throw new HttpError(502, r.errors[0] ? `Notisen kunde inte skickas: ${r.errors[0]}` : "Notiser är inte påslagna på den här enheten.");
+      return json({ ok: true }, 200, NO_CACHE);
+    }
+  }
+  throw new HttpError(404, "Hittades inte.");
+}
+
 export async function handleAdmin(req: Request, path: string, deps: AdminDeps): Promise<Response> {
   const { query } = deps;
   const method = req.method;
@@ -311,6 +369,8 @@ export async function handleAdmin(req: Request, path: string, deps: AdminDeps): 
   }
 
   if (!(await verifyToken(deps.auth, bearer(req)))) throw new HttpError(401, "Du är utloggad. Logga in igen.");
+
+  if (section === "push") return handlePush(req, id, deps);
 
   const route = `${method} ${section}${id ? "/:id" : ""}${sub ? `/${sub}` : ""}`;
   if (section === "cars") await ensureSchema(query);

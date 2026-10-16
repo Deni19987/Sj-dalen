@@ -4,6 +4,7 @@
 import { ensureSchema, handleAdmin, serveImage } from "./admin";
 import type { AuthConfig } from "./auth";
 import { termsEffectiveDate } from "../src/lib/auction";
+import { sendPush } from "./push";
 import {
   body,
   dbError,
@@ -27,7 +28,19 @@ export interface HandlerOptions {
   env: Record<string, string | undefined>;
 }
 
+const kr = (n: number) => `${n.toLocaleString("sv-SE")} kr`;
+const short = (s: string, max = 120) => (s.length > max ? `${s.slice(0, max - 1).trimEnd()}…` : s);
+// "fre 17 okt kl. 09:00"
+function bookingTime(date: string, time: string) {
+  const d = new Date(`${date}T12:00:00Z`);
+  const day = d.toLocaleDateString("sv-SE", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+  return `${day.replace(/\./g, "")} kl. ${time}`;
+}
+
 export function createHandler(query: Query, options: HandlerOptions) {
+  const push = (...args: Parameters<typeof sendPush> extends [unknown, unknown, ...infer R] ? R : never) =>
+    sendPush(query, options.env, ...args);
+
   return async function handle(req: Request): Promise<Response> {
     const url = new URL(req.url);
     const path = url.pathname.replace(/^\/api/, "").replace(/\/+$/, "") || "/";
@@ -104,6 +117,13 @@ export function createHandler(query: Query, options: HandlerOptions) {
               b.amount,
               termsEffectiveDate(settings[0]?.value?.auction),
             ]);
+            const car = (await query("select title from cars where id = $1", [b.carId]))[0];
+            await push("bids", {
+              title: `Nytt bud: ${kr(b.amount)}`,
+              body: `${car?.title ?? "Bil"} – ${short(String(b.name), 60)}${result.extended ? " (auktionen förlängd)" : ""}`,
+              url: `/admin/bud?bil=${encodeURIComponent(b.carId)}`,
+              tag: `bid-${b.carId}`,
+            });
           }
           return json(result);
         }
@@ -120,6 +140,13 @@ export function createHandler(query: Query, options: HandlerOptions) {
             str(b.regNumber, "registreringsnummer", { max: 10, optional: true }),
             str(b.notes, "övrigt", { max: 2000, optional: true }),
           ]).catch(dbError);
+          const service = (await query("select name from services where id = $1", [b.serviceId]))[0];
+          await push("bookings", {
+            title: `Ny bokning: ${service?.name ?? "verkstadstid"}`,
+            body: `${bookingTime(b.date, b.time)} – ${short(String(b.name), 60)}${b.regNumber ? `, ${String(b.regNumber).toUpperCase()}` : ""}`,
+            url: "/admin/bokningar",
+            tag: `booking-${rows[0].result?.id ?? Date.now()}`,
+          });
           return json(rows[0].result, 201);
         }
 
@@ -140,6 +167,12 @@ export function createHandler(query: Query, options: HandlerOptions) {
               email(b.email),
             ],
           );
+          await push("messages", {
+            title: "Någon vill sälja sin bil",
+            body: `${b.make} ${b.model} ${b.year}, ${Number(b.mileageKm).toLocaleString("sv-SE")} mil – ${short(String(b.name), 60)}`,
+            url: "/admin/inkorg",
+            tag: `sell-${Date.now()}`,
+          });
           return json({ ok: true }, 201);
         }
 
@@ -150,6 +183,12 @@ export function createHandler(query: Query, options: HandlerOptions) {
             email(b.email),
             str(b.message, "meddelande", { min: 4, max: 5000 }),
           ]);
+          await push("messages", {
+            title: `Meddelande från ${short(String(b.name).trim(), 60)}`,
+            body: short(String(b.message).trim().replace(/\s+/g, " ")),
+            url: "/admin/inkorg",
+            tag: `contact-${Date.now()}`,
+          });
           return json({ ok: true }, 201);
         }
 

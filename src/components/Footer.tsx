@@ -30,7 +30,8 @@ export function Footer() {
             <li><Link to="/auktion/salj" className="hover:text-white">Sälj din bil till oss</Link></li>
             <li><Link to="/om-oss" className="hover:text-white">Om oss</Link></li>
             <li><Link to="/faq" className="hover:text-white">Vanliga frågor</Link></li>
-            <li><Link to="/admin" className="hover:text-white">Personal</Link></li>
+            {/* Vanlig länk (inte routerlänk): adminsidan laddas om och får sin egen appikon för hemskärmen. */}
+            <li><a href="/admin" className="hover:text-white">Personal</a></li>
           </ul>
         </div>
 

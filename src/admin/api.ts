@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toBid, toCar } from "../lib/api";
 import { queryKeys } from "../lib/queries";
 import type { Car, CarStatus, Faq, Review, Service, SiteSettings } from "../lib/types";
+import { disablePushOnSignOut } from "./push";
 
 /* ------------------------------------------------------------------ */
 /* Inloggning                                                           */
@@ -54,7 +55,32 @@ export async function login(password: string, remember: boolean) {
   setSession(data);
 }
 
-export const logout = () => setSession(null);
+/** Loggar ut och stänger av pushnotiser på enheten (de slås på igen vid nästa inloggning). */
+export async function logout() {
+  await disablePushOnSignOut();
+  setSession(null);
+}
+
+/* ------------------------------------------------------------------ */
+/* Pushnotiser                                                          */
+/* ------------------------------------------------------------------ */
+
+export type PushTopic = "bids" | "bookings" | "messages";
+export interface PushState {
+  subscribed: boolean;
+  topics: PushTopic[];
+}
+
+export const pushApi = {
+  publicKey: () => request<{ publicKey: string }>("/push"),
+  status: (endpoint: string) => request<PushState>("/push/status", { method: "POST", body: { endpoint } }),
+  subscribe: (body: { endpoint: string; keys: { p256dh: string; auth: string }; userAgent: string; topics?: PushTopic[] }) =>
+    request<PushState>("/push/subscribe", { method: "POST", body }),
+  setTopics: (endpoint: string, topics: PushTopic[]) =>
+    request<PushState>("/push/topics", { method: "POST", body: { endpoint, topics } }),
+  unsubscribe: (endpoint: string) => request<PushState>("/push/unsubscribe", { method: "POST", body: { endpoint } }),
+  test: (endpoint: string) => request<{ ok: true }>("/push/test", { method: "POST", body: { endpoint } }),
+};
 
 /* ------------------------------------------------------------------ */
 /* Anrop                                                                */

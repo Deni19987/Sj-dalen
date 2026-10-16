@@ -145,6 +145,22 @@ Sätt miljövariabeln `ADMIN_PASSWORD` i Netlify (Site configuration → Environ
 | GET | `/api/images/:id/:variant` | Bilbild (`main`, `thumb`, `source`) |
 | * | `/api/admin/*` | Admin (kräver inloggning, se `server/admin.ts`) |
 
+## Admin som app och pushnotiser
+
+**Egen subdomän.** Admin kan nås på t.ex. `admin.sjodalenbilar.se`. Det är samma Netlify-sajt:
+lägg till domänen under *Domain management → Add a domain alias* och peka en CNAME-post för `admin` till
+sajtens Netlify-adress. På `admin.`-domänen öppnas alltid `/admin`, och "Visa webbplatsen" leder till huvuddomänen.
+`/admin` på huvuddomänen (länken "Personal" i sidfoten) fungerar som förut.
+
+**Hemskärmen.** Adminsidorna har en egen appbeskrivning (`public/admin.webmanifest`) och ikon, så "Lägg till på
+hemskärmen" startar admin som en app. På iPhone kräver notiser att admin öppnas från hemskärmen (iOS 16.4+).
+
+**Pushnotiser** (samma upplägg som i Carflow, `server/push.ts`, `src/admin/push.ts`, `public/sw.js`): varje enhet
+slår på notiser under Inställningar och väljer nya bud, nya bokningar och/eller nya meddelanden. VAPID-nycklarna
+skapas automatiskt första gången och sparas i databasen – inget behöver ställas in. Vill man styra dem själv sätts
+`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` (och ev. `VAPID_SUBJECT`) i Netlify. Utloggning stänger av notiserna på
+enheten; de slås på igen vid nästa inloggning.
+
 ## Publicera på Netlify (befintligt konto)
 
 1. Netlify → **Add new site → Import an existing project** → välj detta GitHub-repo.

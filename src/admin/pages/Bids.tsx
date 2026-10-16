@@ -21,7 +21,8 @@ export function BidsPage() {
   const { data: cars, isLoading, error, refetch } = useAdminCars();
   const [view, setView] = useState<View>("bids");
   const [scope, setScope] = useState<Scope>("live");
-  const [carId, setCarId] = useState("");
+  // ?bil=<id> – från en pushnotis om ett nytt bud
+  const [carId, setCarId] = useState(() => new URLSearchParams(window.location.search).get("bil") ?? "");
   const [q, setQ] = useState("");
   const del = useDeleteBid();
   const run = useRun();
