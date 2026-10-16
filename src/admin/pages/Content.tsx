@@ -1,7 +1,6 @@
 import { useState, type ReactNode } from "react";
-import { ChevronDown, ChevronUp, HelpCircle, Pencil, Plus, Star, Trash2, Wrench } from "lucide-react";
-import { cn } from "../../lib/cn";
-import type { Faq, Review, Service, ServiceCategory } from "../../lib/types";
+import { ChevronDown, ChevronUp, HelpCircle, Pencil, Plus, Trash2, Wrench } from "lucide-react";
+import type { Faq, Service, ServiceCategory } from "../../lib/types";
 import { useContent, useDeleteContent, useReorderContent, useSaveContent, type ContentType } from "../api";
 import { kr } from "../helpers";
 import { Btn, Card, EmptyState, ErrorBlock, Field, Input, LoadingBlock, PageHeader, Pill, Segmented, Select, Sheet, TextArea, Toggle, useFeedback, useRun } from "../ui";
@@ -11,7 +10,7 @@ const CATEGORIES: ServiceCategory[] = ["Underhåll", "Reparation", "Besiktning",
 export function ContentPage() {
   const { data, isLoading, error, refetch } = useContent();
   const [tab, setTab] = useState<ContentType>("services");
-  const [editing, setEditing] = useState<{ type: ContentType; item: Service | Faq | Review | null } | null>(null);
+  const [editing, setEditing] = useState<{ type: ContentType; item: Service | Faq | null } | null>(null);
 
   return (
     <div>
@@ -20,7 +19,7 @@ export function ContentPage() {
         subtitle="Texter och priser som visas på webbplatsen. Ändringar syns inom en minut."
         actions={
           <Btn variant="primary" icon={<Plus size={17} />} onClick={() => setEditing({ type: tab, item: null })}>
-            {tab === "services" ? "Ny tjänst" : tab === "faqs" ? "Ny fråga" : "Nytt omdöme"}
+            {tab === "services" ? "Ny tjänst" : "Ny fråga"}
           </Btn>
         }
       />
@@ -31,7 +30,6 @@ export function ContentPage() {
         options={[
           { value: "services", label: "Tjänster & priser" },
           { value: "faqs", label: "Vanliga frågor" },
-          { value: "reviews", label: "Omdömen" },
         ]}
       />
 
@@ -73,31 +71,9 @@ export function ContentPage() {
           )}
         />
       )}
-      {data && tab === "reviews" && (
-        <OrderedList
-          type="reviews"
-          items={data.reviews}
-          empty={{ icon: <Star size={26} />, title: "Inga omdömen" }}
-          onEdit={(item) => setEditing({ type: "reviews", item })}
-          render={(r: Review) => (
-            <>
-              <div className="flex items-center gap-2">
-                <p className="text-[15px] font-semibold">{r.name}</p>
-                <span className="flex text-ios-orange">
-                  {Array.from({ length: 5 }, (_, i) => (
-                    <Star key={i} size={12} className={i < r.rating ? "fill-current" : "text-ios-separator"} />
-                  ))}
-                </span>
-              </div>
-              <p className="line-clamp-2 text-[13px] text-ios-secondary">{r.text}</p>
-            </>
-          )}
-        />
-      )}
 
       {editing?.type === "services" && <ServiceSheet item={editing.item as Service | null} onClose={() => setEditing(null)} />}
       {editing?.type === "faqs" && <FaqSheet item={editing.item as Faq | null} onClose={() => setEditing(null)} />}
-      {editing?.type === "reviews" && <ReviewSheet item={editing.item as Review | null} onClose={() => setEditing(null)} />}
     </div>
   );
 }
@@ -278,46 +254,6 @@ function FaqSheet({ item, onClose }: { item: Faq | null; onClose: () => void }) 
       </Field>
       <Field label="Svar">
         <TextArea value={answer} onChange={(e) => setAnswer(e.target.value)} />
-      </Field>
-    </EditSheet>
-  );
-}
-
-function ReviewSheet({ item, onClose }: { item: Review | null; onClose: () => void }) {
-  const save = useSaveContent("reviews");
-  const run = useRun();
-  const [name, setName] = useState(item?.name ?? "");
-  const [rating, setRating] = useState(item?.rating ?? 5);
-  const [text, setText] = useState(item?.text ?? "");
-  const [date, setDate] = useState((item?.date ?? new Date().toISOString()).slice(0, 10));
-  async function onSave() {
-    const ok = await run(
-      () => save.mutateAsync({ id: item?.id, data: { name, rating, text, date: new Date(`${date}T12:00:00`).toISOString() } }),
-      item ? "Omdömet är uppdaterat" : "Omdömet är tillagt",
-    );
-    if (ok !== undefined) onClose();
-  }
-  return (
-    <EditSheet title={item ? "Redigera omdöme" : "Nytt omdöme"} onClose={onClose} onSave={onSave} saving={save.isPending} valid={!!name.trim() && !!text.trim() && !!date}>
-      <div className="grid grid-cols-[1fr_auto] gap-3">
-        <Field label="Namn">
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Anna S." autoFocus />
-        </Field>
-        <Field label="Datum">
-          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-        </Field>
-      </div>
-      <Field label="Betyg">
-        <div className="flex gap-1">
-          {[1, 2, 3, 4, 5].map((n) => (
-            <button key={n} type="button" aria-label={`${n} stjärnor`} onClick={() => setRating(n)} className="p-1">
-              <Star size={28} className={cn("transition", n <= rating ? "fill-ios-orange text-ios-orange" : "text-ios-separator")} />
-            </button>
-          ))}
-        </div>
-      </Field>
-      <Field label="Omdöme">
-        <TextArea value={text} onChange={(e) => setText(e.target.value)} />
       </Field>
     </EditSheet>
   );
