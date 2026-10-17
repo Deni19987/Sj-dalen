@@ -236,7 +236,7 @@ export function PushPrompt() {
       size="sm"
       footer={
         mode === "enable" ? (
-          <div className="flex flex-col gap-2">
+          <div className="flex w-full flex-col gap-2">
             <Btn variant="primary" size="lg" className="w-full" onClick={onEnable} loading={busy}>
               Slå på notiser
             </Btn>

@@ -34,6 +34,9 @@
           for (var k in attrs) el.setAttribute(k, attrs[k]);
           head.appendChild(el);
         }
+        // Låt sidan veta var hemknappsfältet och de rundade hörnen är (env(safe-area-inset-*)).
+        var vp = document.querySelector('meta[name="viewport"]');
+        if (vp) vp.setAttribute("content", "width=device-width, initial-scale=1.0, viewport-fit=cover");
         add("link", { rel: "manifest", href: "/admin.webmanifest" });
         add("link", { rel: "apple-touch-icon", href: "/admin-apple-touch-icon.png" });
         add("meta", { name: "apple-mobile-web-app-capable", content: "yes" });

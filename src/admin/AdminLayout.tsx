@@ -119,8 +119,9 @@ function TabBar({ pathname }: { pathname: string }) {
 
   return (
     <>
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-black/[.08] bg-white/85 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden">
-        <div className="mx-auto grid max-w-lg grid-cols-5">
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-black/[.08] bg-white/85 pb-[max(6px,env(safe-area-inset-bottom))] backdrop-blur-xl lg:hidden">
+        {/* Luft åt sidorna så att ytterflikarna inte hamnar i telefonens rundade hörn */}
+        <div className="mx-auto grid max-w-lg grid-cols-5 pl-[max(12px,env(safe-area-inset-left))] pr-[max(12px,env(safe-area-inset-right))]">
           {main.map((item) => {
             const active = isActive(pathname, item);
             return (
@@ -265,7 +266,7 @@ export function AdminLayout() {
       ) : (
         <div className="flex min-h-dvh bg-ios-bg font-apple text-ios-label antialiased">
           <Sidebar pathname={pathname} />
-          <main className="min-w-0 flex-1 px-4 pb-28 pt-6 sm:px-8 sm:pt-10 lg:pb-12">
+          <main className="min-w-0 flex-1 px-4 pb-[calc(7rem+env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))] sm:px-8 sm:pt-10 lg:pb-12">
             <div className="mx-auto max-w-6xl">
               <Outlet />
             </div>
