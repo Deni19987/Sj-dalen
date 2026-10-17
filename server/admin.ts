@@ -260,7 +260,8 @@ function settingsValue(b: Record<string, any>) {
       pickupDays: int(au.pickupDays, "hämtningsfrist", 1, 60),
       storageFee: int(au.storageFee, "förvaringsavgift", 0, 10_000),
       cancelAfterDays: int(au.cancelAfterDays, "dagar innan köpet hävs", 7, 180),
-    } as { paymentDays: number; pickupDays: number; storageFee: number; cancelAfterDays: number; updatedAt?: string },
+      paymentInfo: text(au.paymentInfo, "betalningsuppgifter", 200),
+    } as { paymentDays: number; pickupDays: number; storageFee: number; cancelAfterDays: number; paymentInfo: string; updatedAt?: string },
     chat: {
       staffName: text((b.chat ?? {}).staffName, "namn i chatten", 40),
       quickReplies: strList((b.chat ?? {}).quickReplies, "snabbsvar", { maxItems: 12, max: 500 }),
@@ -543,7 +544,7 @@ export async function handleAdmin(req: Request, path: string, deps: AdminDeps): 
     case "POST cars/:id/actions": {
       const car = await getCar(query, id);
       const b = await body(req);
-      const action = oneOf(b.action, "åtgärd", ["end", "extend", "sell", "relist", "publish", "unpublish", "duplicate", "deal"] as const);
+      const action = oneOf(b.action, "åtgärd", ["end", "extend", "sell", "relist", "publish", "unpublish", "duplicate", "deal", "dealInfo"] as const);
       switch (action) {
         case "end":
           await query("update cars set ends_at = now(), updated_at = now() where id = $1", [id]);
@@ -580,7 +581,7 @@ export async function handleAdmin(req: Request, path: string, deps: AdminDeps): 
           break;
         // Efter auktionen: Vinnaren kontaktad → Betald → Hämtad (bocka i/ur)
         case "deal": {
-          const step = oneOf(b.step, "steg", ["contactedAt", "paidAt", "pickedUpAt"] as const);
+          const step = oneOf(b.step, "steg", ["contactedAt", "paidAt", "pickupBookedAt", "ownershipAt", "pickedUpAt"] as const);
           await query(
             bool(b.done)
               ? `update cars set deal = jsonb_set(coalesce(deal, '{}'), array[$2::text], to_jsonb(now())), updated_at = now() where id = $1`
@@ -590,6 +591,13 @@ export async function handleAdmin(req: Request, path: string, deps: AdminDeps): 
                   where id = $1`,
             [id, step],
           );
+          break;
+        }
+        case "dealInfo": {
+          const patch: Record<string, string> = {};
+          if (b.pickupTime !== undefined) patch.pickupTime = text(b.pickupTime, "hämtningstid", 20);
+          if (b.note !== undefined) patch.note = text(b.note, "anteckning", 2000);
+          await query("update cars set deal = coalesce(deal, '{}') || $2::jsonb, updated_at = now() where id = $1", [id, JSON.stringify(patch)]);
           break;
         }
         case "unpublish":

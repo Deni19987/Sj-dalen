@@ -146,8 +146,23 @@ export interface AdminCar extends Car {
   createdAt: string;
   updatedAt: string;
   /** Efter auktionen: när vinnaren kontaktades, betalade och hämtade bilen */
-  deal: { endedAt?: string; contactedAt?: string; paidAt?: string; pickedUpAt?: string };
+  deal: Deal;
+  soldAt?: string;
 }
+
+/** Affären efter auktionen (cars.deal). Varje steg är tidpunkten då det bockades i. */
+export interface Deal {
+  endedAt?: string;
+  contactedAt?: string;
+  paidAt?: string;
+  pickupBookedAt?: string;
+  ownershipAt?: string;
+  pickedUpAt?: string;
+  /** Avtalad tid för hämtning (datetime-local) */
+  pickupTime?: string;
+  note?: string;
+}
+export type DealStep = "contactedAt" | "paidAt" | "pickupBookedAt" | "ownershipAt" | "pickedUpAt";
 
 /** Fälten som skickas när en bil sparas. */
 export type CarInput = Omit<Car, "id" | "bids" | "extended" | "hasReserve" | "reserveMet" | "equipment" | "engine" | "horsepower" | "drive" | "trim"> & {
@@ -288,6 +303,7 @@ const toAdminCar = (r: Row): AdminCar => ({
   adminNote: r.admin_note ?? "",
   regNumber: r.reg_number ?? "",
   deal: r.deal ?? {},
+  soldAt: r.sold_at ?? undefined,
   facts: { equipment: [], notes: "", ...(r.facts ?? {}) },
   equipment: r.facts?.equipment ?? [],
   engine: r.facts?.engine,
@@ -603,7 +619,15 @@ export const mailApi = {
 /** Efter auktionen: bocka i/ur Vinnaren kontaktad, Betald, Hämtad */
 export const useDealStep = () =>
   useAdminMutation(
-    ({ id, step, done }: { id: string; step: "contactedAt" | "paidAt" | "pickedUpAt"; done: boolean }) =>
+    ({ id, step, done }: { id: string; step: DealStep; done: boolean }) =>
       request(`/cars/${encodeURIComponent(id)}/actions`, { method: "POST", body: { action: "deal", step, done } }),
+    [adminKeys.cars],
+  );
+
+/** Hämtningstid och anteckning för affären */
+export const useDealInfo = () =>
+  useAdminMutation(
+    ({ id, ...info }: { id: string; pickupTime?: string; note?: string }) =>
+      request(`/cars/${encodeURIComponent(id)}/actions`, { method: "POST", body: { action: "dealInfo", ...info } }),
     [adminKeys.cars],
   );

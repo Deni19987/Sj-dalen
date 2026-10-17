@@ -124,6 +124,16 @@ function ContactInfoForm({ settings }: { settings: SiteSettings }) {
               <Input type="number" inputMode="numeric" min={7} max={180} value={s.auction.cancelAfterDays} onChange={(e) => setAuction("cancelAfterDays", e.target.value)} />
             </Field>
           </div>
+          <div className="mt-4">
+            <Field label="Betalningsuppgifter till köpare" hint="T.ex. bankgiro eller Swish. Kommer med i mejlet till köparen efter en auktion.">
+              <Input
+                value={s.auction.paymentInfo ?? ""}
+                maxLength={200}
+                placeholder="Bankgiro 123-4567"
+                onChange={(e) => setS((x) => ({ ...x, auction: { ...x.auction, paymentInfo: e.target.value } }))}
+              />
+            </Field>
+          </div>
           {auctionChanged && (
             <p className="mt-4 rounded-[12px] bg-ios-orange/10 px-3 py-2.5 text-[13px] text-ios-label">
               När du sparar får villkoren ett nytt datum. Ändringen gäller bud som läggs från och med nu – bud som redan
