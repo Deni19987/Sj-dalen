@@ -586,6 +586,9 @@ export const useConversations = (status: "open" | "archived") =>
   });
 
 export const chatAdminApi = {
+  /** Starta (eller hitta befintlig) chatt med en kund, t.ex. köparen efter en auktion */
+  start: (b: { email: string; name?: string; phone?: string; carId?: string }) =>
+    request<{ id: string }>("/chats", { method: "POST", body: b }),
   thread: (id: string, after?: string | null) =>
     request<{ conversation: Conversation; messages: StaffChatMessage[] }>(
       `/chats/${id}${after ? `?after=${encodeURIComponent(after)}` : ""}`,

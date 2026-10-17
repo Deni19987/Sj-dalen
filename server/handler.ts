@@ -152,7 +152,7 @@ export function createHandler(query: Query, options: HandlerOptions) {
           await push("bookings", {
             title: `Ny bokning: ${service?.name ?? "verkstadstid"}`,
             body: `${bookingTime(b.date, b.time)} – ${short(String(b.name), 60)}${b.regNumber ? `, ${String(b.regNumber).toUpperCase()}` : ""}`,
-            url: "/admin/bokningar",
+            url: rows[0].result?.id ? `/admin/bokningar#bokning-${rows[0].result.id}` : "/admin/bokningar",
             tag: `booking-${rows[0].result?.id ?? Date.now()}`,
           });
           return json(rows[0].result, 201);

@@ -1,10 +1,10 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { BadgeCheck, CalendarClock, Check, ExternalLink, Mail, MessageCircle, Phone, Repeat, Trophy } from "lucide-react";
 import { AUCTION_DEFAULTS } from "../lib/auction";
 import { cn } from "../lib/cn";
 import { useSettings } from "../lib/queries";
-import { useCarAction, useDealInfo, useDealStep, type AdminCar, type DealStep } from "./api";
+import { chatAdminApi, useCarAction, useDealInfo, useDealStep, type AdminCar, type DealStep } from "./api";
 import { dealSteps, topBid, type DealStepInfo } from "./deal";
 import { fmtDateTime, kr, telHref } from "./helpers";
 import { Btn, Card, Input, TextArea, useFeedback, useRun } from "./ui";
@@ -27,7 +27,7 @@ export function DealWorkspace({ car, onSell, onRelist }: { car: AdminCar; onSell
   const complete = current === -1;
 
   return (
-    <Card className="mb-6">
+    <Card id="affar" className="mb-6 scroll-mt-24">
       {/* Huvud: köparen och slutpriset */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
@@ -45,7 +45,8 @@ export function DealWorkspace({ car, onSell, onRelist }: { car: AdminCar; onSell
           </h2>
           {price != null && <p className="text-[17px] font-semibold tabular-nums text-ios-blue">{kr(price)}</p>}
         </div>
-        {top && (
+        {/* Kontaktknapparna finns i steget "Kontakta köparen" när det är aktuellt */}
+        {top && steps[current]?.key !== "contactedAt" && (
           <div className="flex flex-wrap gap-2">
             {top.phone && (
               <a href={telHref(top.phone)} className="flex h-9 items-center gap-1.5 rounded-full bg-ios-fill2 px-3.5 text-[14px] font-medium text-ios-blue">
@@ -241,48 +242,8 @@ function StepBody({
       );
     }
 
-    case "contactedAt": {
-      const body = [
-        `Hej ${first}!`,
-        "",
-        `Grattis – du har köpt ${car.title} för ${kr(price)}.`,
-        "",
-        terms.paymentInfo ? `Betala till: ${terms.paymentInfo}` : "Betalningsuppgifter: ",
-        `Betalningen ska vara oss tillhanda inom ${terms.paymentDays} bankdagar. Märk betalningen med ${car.regNumber || car.title}.`,
-        "",
-        `När betalningen kommit in bokar vi en tid för hämtning, inom ${terms.pickupDays} dagar. Vi gör ägarbytet tillsammans på plats – tänk på att ha en trafikförsäkring klar från ägarbytet.`,
-        "",
-        "Hälsningar",
-      ].join("\n");
-      return (
-        <div className="space-y-3">
-          {hint(`Ring eller mejla ${first || "köparen"} med betalningsuppgifterna. Betalning ska ske inom ${terms.paymentDays} bankdagar från att hen fått dem.`)}
-          <div className="flex flex-wrap gap-2">
-            {top?.email && (
-              <a
-                href={`mailto:${top.email}?subject=${encodeURIComponent(`Ditt köp av ${car.title}`)}&body=${encodeURIComponent(body)}`}
-                className="flex h-10 items-center gap-2 rounded-full bg-ios-blue/10 px-4 text-[15px] font-medium text-ios-blue"
-              >
-                <Mail size={16} /> Mejla betalningsuppgifter
-              </a>
-            )}
-            {top?.phone && (
-              <a href={telHref(top.phone)} className="flex h-10 items-center gap-2 rounded-full bg-ios-blue/10 px-4 text-[15px] font-medium text-ios-blue">
-                <Phone size={16} /> Ring
-              </a>
-            )}
-            <Btn variant="primary" icon={<Check size={16} />} onClick={() => markDone("contactedAt", "Bra – nu väntar vi på betalningen")}>
-              Köparen är kontaktad
-            </Btn>
-          </div>
-          {!terms.paymentInfo && (
-            <p className="text-[12px] text-ios-tertiary">
-              Tips: lägg in bankgiro eller Swish under Innehåll → Kontakt, så kommer de med i mejlet automatiskt.
-            </p>
-          )}
-        </div>
-      );
-    }
+    case "contactedAt":
+      return <ContactStep car={car} terms={terms} onDone={() => markDone("contactedAt", "Bra – nu väntar vi på betalningen")} />;
 
     case "paidAt":
       return (
@@ -365,6 +326,81 @@ function StepBody({
         </div>
       );
   }
+}
+
+/** Steget "Kontakta köparen": välj chatt, samtal eller mejl – sedan bockar man av. */
+function ContactStep({
+  car,
+  terms,
+  onDone,
+}: {
+  car: AdminCar;
+  terms: { paymentDays: number; pickupDays: number; paymentInfo?: string };
+  onDone: () => void;
+}) {
+  const navigate = useNavigate();
+  const run = useRun();
+  const [busy, setBusy] = useState(false);
+  const top = topBid(car);
+  const price = car.soldPrice ?? top?.amount ?? 0;
+  const first = top?.name.split(" ")[0] ?? "";
+  const ref = car.regNumber || car.title;
+  const message = [
+    `Hej ${first}! Grattis – du har köpt ${car.title} för ${kr(price)}.`,
+    terms.paymentInfo
+      ? `Betala till ${terms.paymentInfo} inom ${terms.paymentDays} bankdagar och märk betalningen med ${ref}.`
+      : `Betala inom ${terms.paymentDays} bankdagar och märk betalningen med ${ref}.`,
+    `När betalningen kommit in bokar vi en tid för hämtning. Vi gör ägarbytet tillsammans på plats – ha en trafikförsäkring klar från ägarbytet.`,
+    // Utan sparade betalningsuppgifter: sista raden fyller man i själv
+    ...(terms.paymentInfo ? [] : ["Betalningsuppgifter: "]),
+  ].join("\n\n");
+
+  async function chat() {
+    if (!top?.email) return;
+    setBusy(true);
+    const r = await run(() => chatAdminApi.start({ email: top.email!, name: top.name, phone: top.phone, carId: car.id }));
+    setBusy(false);
+    if (r) navigate({ to: "/admin/inkorg/$id", params: { id: r.id }, search: { utkast: message } as never });
+  }
+
+  const tile =
+    "flex flex-1 flex-col items-center gap-1.5 rounded-[14px] bg-ios-fill2 px-3 py-3.5 text-[14px] font-medium text-ios-blue transition-[background-color,transform] duration-150 hover:bg-ios-blue/10 active:scale-[.97] disabled:opacity-50";
+
+  return (
+    <div className="space-y-3">
+      <p className="text-[14px] leading-relaxed text-ios-secondary">
+        Kontakta {first || "köparen"} med betalningsuppgifterna – i chatten, per telefon eller mejl. Betalning ska ske inom{" "}
+        {terms.paymentDays} bankdagar.
+      </p>
+      <div className="flex gap-2">
+        {top?.email && (
+          <button type="button" onClick={chat} disabled={busy} className={tile}>
+            <MessageCircle size={22} /> Chatta
+          </button>
+        )}
+        {top?.phone && (
+          <a href={telHref(top.phone)} className={tile}>
+            <Phone size={22} /> Ring
+          </a>
+        )}
+        {top?.email && (
+          <a
+            href={`mailto:${top.email}?subject=${encodeURIComponent(`Ditt köp av ${car.title}`)}&body=${encodeURIComponent(`${message}\n\nHälsningar`)}`}
+            className={tile}
+          >
+            <Mail size={22} /> Mejla
+          </a>
+        )}
+      </div>
+      <p className="text-[12px] text-ios-tertiary">
+        Chatten öppnas med ett färdigt meddelande om betalningen som du kan ändra innan du skickar. Köparen får det även på mejl.
+        {!terms.paymentInfo && " Lägg in bankgiro eller Swish under Innehåll → Kontakt så kommer det med automatiskt."}
+      </p>
+      <Btn variant="primary" icon={<Check size={16} />} onClick={onDone}>
+        Köparen är kontaktad
+      </Btn>
+    </div>
+  );
 }
 
 /** Fritext om affären (t.ex. "betalar halva kontant"), sparas när man lämnar fältet. */

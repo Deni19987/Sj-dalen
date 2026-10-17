@@ -322,6 +322,32 @@ export async function handleChatAdmin(req: Request, id: string | undefined, acti
   await ensureChatSchema(query);
   const url = new URL(req.url);
 
+  // Personalen startar en chatt, t.ex. med köparen efter en auktion. Finns redan en öppen chatt
+  // med samma e-post (och bil) används den.
+  if (!id && req.method === "POST") {
+    const b = await body(req);
+    const email = str(b.email, "e-post", { max: 254 })!.trim().toLowerCase();
+    if (!EMAIL_RE.test(email)) throw new HttpError(400, "Ogiltig e-postadress.");
+    const carId = typeof b.carId === "string" && b.carId ? b.carId : null;
+    const existing = (
+      await query(
+        `select id::text from conversations where lower(email) = $1 and status = 'open' and ($2::text is null or car_id = $2 or car_id is null)
+          order by (car_id = $2) desc nulls last, last_message_at desc limit 1`,
+        [email, carId],
+      )
+    )[0];
+    if (existing) return json({ id: existing.id }, 200, NO_CACHE);
+    const car = carId ? (await query("select id from cars where id = $1", [carId]))[0]?.id ?? null : null;
+    const conv = (
+      await query(
+        `insert into conversations (token, kind, name, email, phone, car_id, staff_seen_at, staff_read_at)
+         values ($1, 'chat', $2, $3, $4, $5, now(), now()) returning id::text`,
+        [newToken(), String(b.name ?? "").trim().slice(0, 120), email, String(b.phone ?? "").trim().slice(0, 40), car],
+      )
+    )[0];
+    return json({ id: conv.id }, 201, NO_CACHE);
+  }
+
   if (!id && req.method === "GET") {
     const status = url.searchParams.get("status") === "archived" ? "archived" : "open";
     const rows = await query(`${LIST_SQL} where c.status = $1 order by c.last_message_at desc limit 300`, [status]);
@@ -382,12 +408,19 @@ async function emailCustomerIfAway(req: Request, query: Query, env: Env, conv: R
     return "already" as const;
   const site = await siteSettings(query);
   const car = conv.car_id ? (await query("select title from cars where id = $1", [conv.car_id]))[0]?.title : null;
+  // Startade personalen chatten (t.ex. med köparen) har kunden inte skrivit något än.
+  const started = (await query("select 1 from conversation_messages where conversation_id = $1 and sender = 'customer' limit 1", [conv.id])).length > 0;
   const r = await sendMail(query, env, {
     to: conv.email,
     fromName: companyName(site),
-    subject: car ? `Svar om ${car}` : `Svar från ${companyName(site)}`,
-    heading: "Du har fått ett svar",
-    paragraphs: [conv.name ? `Hej ${String(conv.name).split(" ")[0]}!` : "Hej!", car ? `Vi har svarat på din fråga om ${car}.` : "Vi har svarat på ditt meddelande."],
+    subject: car ? `${started ? "Svar" : "Meddelande"} om ${car}` : `${started ? "Svar" : "Meddelande"} från ${companyName(site)}`,
+    heading: started ? "Du har fått ett svar" : "Du har fått ett meddelande",
+    paragraphs: [
+      conv.name ? `Hej ${String(conv.name).split(" ")[0]}!` : "Hej!",
+      started
+        ? car ? `Vi har svarat på din fråga om ${car}.` : "Vi har svarat på ditt meddelande."
+        : car ? `Vi har skrivit till dig om ${car}.` : `${companyName(site)} har skrivit till dig.`,
+    ],
     quote: { from: staffName(site), text: short(text, 1500) },
     button: { label: "Öppna chatten och svara", url: `${siteOrigin(req)}/chatt/${conv.token}` },
     footer: `Du får det här mejlet för att du chattat med ${companyName(site)}. Svara gärna i chatten, så hamnar allt på ett ställe.`,

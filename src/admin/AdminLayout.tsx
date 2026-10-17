@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Link, Outlet, useRouterState } from "@tanstack/react-router";
+import { Link, Outlet, useRouter, useRouterState } from "@tanstack/react-router";
 import {
   CalendarDays,
   Car,
@@ -17,7 +17,7 @@ import { Logo } from "../components/Logo";
 import { DEMO } from "../lib/api";
 import { cn } from "../lib/cn";
 import { login, logout, useIsLoggedIn, useOverview } from "./api";
-import { siteUrl } from "./helpers";
+import { revealHashTarget, siteUrl } from "./helpers";
 import { PushPrompt } from "./PushNotifications";
 import { Btn, FeedbackProvider, Sheet, Toggle } from "./ui";
 
@@ -240,6 +240,21 @@ function LoginScreen() {
 export function AdminLayout() {
   const loggedIn = useIsLoggedIn();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const hash = useRouterState({ select: (s) => s.location.hash });
+  const router = useRouter();
+
+  // Notislänkar med #del (t.ex. #affar, #bud, #bokning-…): scrolla fram och markera delen.
+  useEffect(() => (loggedIn && hash ? revealHashTarget(hash) : undefined), [loggedIn, pathname, hash]);
+
+  // Tryck på en notis när appen redan är öppen: service workern ber sidan byta vy (se public/sw.js).
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const onMessage = (e: MessageEvent) => {
+      if (e.data?.type === "notification-navigate" && typeof e.data.url === "string") router.history.push(e.data.url);
+    };
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+  }, [router]);
 
   useEffect(() => {
     const prevTitle = document.title;

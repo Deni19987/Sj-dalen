@@ -55,21 +55,25 @@ self.addEventListener("notificationclick", (event) => {
         type: "window",
         includeUncontrolled: true,
       });
-      // Prefer an existing window — focus it and navigate to the target URL.
+      // Finns admin redan öppen: byt vy i appen (snabbt, utan omladdning) via ett meddelande till sidan.
+      // Annars: navigera ett befintligt fönster, eller öppna ett nytt.
+      const admin = clientList.find((c) => new URL(c.url).pathname.startsWith("/admin"));
+      if (admin) {
+        try {
+          await admin.focus();
+          admin.postMessage({ type: "notification-navigate", url: targetUrl });
+          return;
+        } catch (e) {
+          console.warn("[sw] focus admin client failed", e);
+        }
+      }
       for (const client of clientList) {
         try {
           await client.focus();
           if ("navigate" in client && typeof client.navigate === "function") {
-            try {
-              await client.navigate(targetUrl);
-            } catch (e) {
-              // navigate() can fail cross-origin or on iOS; fall back to postMessage.
-              client.postMessage({ type: "notification-navigate", url: targetUrl });
-            }
-          } else {
-            client.postMessage({ type: "notification-navigate", url: targetUrl });
+            await client.navigate(targetUrl);
+            return;
           }
-          return;
         } catch (e) {
           console.warn("[sw] focus/navigate existing client failed", e);
         }

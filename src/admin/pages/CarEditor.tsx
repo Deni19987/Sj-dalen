@@ -957,7 +957,7 @@ function BidsCard({ car }: { car: AdminCar }) {
   }
 
   return (
-    <Card padded={false}>
+    <Card id="bud" padded={false} className="scroll-mt-24">
       <div className="flex items-center justify-between px-5 pb-2 pt-5">
         <h2 className="text-[17px] font-semibold tracking-[-0.01em]">Bud</h2>
         <span className="text-[13px] text-ios-secondary">{bids.length} st</span>

@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useRouterState } from "@tanstack/react-router";
 import { Crown, Download, Gavel, Mail, Phone, Trash2, Users } from "lucide-react";
 import { cn } from "../../lib/cn";
 import { useAdminCars, useDeleteBid, type AdminCar } from "../api";
@@ -23,6 +23,14 @@ export function BidsPage() {
   const [scope, setScope] = useState<Scope>("live");
   // ?bil=<id> – från en pushnotis om ett nytt bud
   const [carId, setCarId] = useState(() => new URLSearchParams(window.location.search).get("bil") ?? "");
+  const searchStr = useRouterState({ select: (s) => s.location.searchStr });
+  useEffect(() => {
+    const bil = new URLSearchParams(searchStr).get("bil");
+    if (bil) {
+      setCarId(bil);
+      setView("bids");
+    }
+  }, [searchStr]);
   const [q, setQ] = useState("");
   const del = useDeleteBid();
   const run = useRun();

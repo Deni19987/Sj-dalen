@@ -106,3 +106,23 @@ export function siteUrl(path = "/") {
   if (!hostname.startsWith("admin.")) return path;
   return `${protocol}//${hostname.slice("admin.".length)}${port ? `:${port}` : ""}${path}`;
 }
+
+/**
+ * Länkar från notiser pekar på en del av sidan (t.ex. /admin/bilar/x#affar). Väntar tills delen
+ * finns (sidan kan behöva hämta data först), scrollar fram den och markerar den en kort stund.
+ */
+export function revealHashTarget(hash: string) {
+  const id = decodeURIComponent(hash.replace(/^#/, ""));
+  if (!id) return () => {};
+  let tries = 0;
+  const timer = setInterval(() => {
+    const el = document.getElementById(id);
+    if (!el && ++tries < 50) return;
+    clearInterval(timer);
+    if (!el) return;
+    el.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+    el.classList.add("hash-flash");
+    setTimeout(() => el.classList.remove("hash-flash"), 1800);
+  }, 100);
+  return () => clearInterval(timer);
+}

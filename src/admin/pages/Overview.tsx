@@ -178,7 +178,7 @@ export function OverviewPage() {
               const done = steps.filter((s) => s.done).length;
               const late = steps.some((s) => !s.done && s.due && s.due.getTime() < now);
               return (
-                <Link key={car.id} to="/admin/bilar/$id" params={{ id: car.id }} className="flex items-center gap-3 px-4 py-3 transition hover:bg-ios-fill2">
+                <Link key={car.id} to="/admin/bilar/$id" params={{ id: car.id }} hash="affar" className="flex items-center gap-3 px-4 py-3 transition hover:bg-ios-fill2">
                   <Thumb car={car} />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[15px] font-semibold">{car.title}</p>

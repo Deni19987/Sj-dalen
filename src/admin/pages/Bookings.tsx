@@ -142,7 +142,7 @@ function BookingRow({ b, onNote }: { b: AdminBooking; onNote: () => void }) {
   }
 
   return (
-    <div className={cn("flex gap-4 px-4 py-3.5 sm:px-5", b.status === "cancelled" && "opacity-60")}>
+    <div id={`bokning-${b.id}`} className={cn("flex scroll-mt-24 gap-4 px-4 py-3.5 sm:px-5", b.status === "cancelled" && "opacity-60")}>
       <div className="w-14 shrink-0 pt-0.5 text-center">
         <p className="text-[17px] font-semibold tabular-nums">{b.time}</p>
       </div>
