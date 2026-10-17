@@ -448,7 +448,7 @@ export type CarAction =
   | { action: "end" }
   | { action: "extend"; hours: number }
   | { action: "sell"; price: number }
-  | { action: "relist"; days: number; clearBids: boolean }
+  | { action: "relist"; days: number; clearBids: boolean; startPrice?: number; minIncrement?: number; reservePrice?: number | null }
   | { action: "publish" }
   | { action: "unpublish" }
   | { action: "duplicate" };

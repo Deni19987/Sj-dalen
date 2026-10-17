@@ -313,6 +313,23 @@ export function CarEditorPage() {
   return <CarEditor key={id ?? "new"} car={car} />;
 }
 
+/** Sektion som kan fällas ihop – används för steg man oftast bara gör en gång (t.ex. hämta uppgifter). */
+function CollapsibleSection({ title, description, defaultOpen, children }: { title: string; description?: string; defaultOpen: boolean; children: ReactNode }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <Card padded={false}>
+      <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="flex w-full items-center gap-3 px-5 py-4 text-left sm:px-6">
+        <span className="min-w-0 flex-1">
+          <span className="block text-[17px] font-semibold tracking-[-0.01em]">{title}</span>
+          {description && <span className="mt-0.5 block text-[13px] text-ios-secondary">{description}</span>}
+        </span>
+        <ChevronDown size={20} className={cn("shrink-0 text-ios-tertiary transition-transform duration-300 ease-ios", open && "rotate-180")} />
+      </button>
+      {open && <div className="animate-ios-fade space-y-4 px-5 pb-5 sm:px-6">{children}</div>}
+    </Card>
+  );
+}
+
 function Section({ id, title, description, children }: { id?: string; title: string; description?: string; children: ReactNode }) {
   return (
     <Card id={id} className="scroll-mt-24">
@@ -608,7 +625,15 @@ function CarEditor({ car }: { car?: AdminCar }) {
 
       <div className={cn("grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_340px]", dealMode && !showAd && "hidden", dealMode && showAd && "animate-ios-fade")}>
         <div className="space-y-6">
-          <Section title="Hämta bilens uppgifter" description="Hämta allt från Transportstyrelsen i två steg – eller hoppa över och fyll i själv nedan.">
+          <Section title="Bilder" description="Välj flera bilder på en gång. De beskärs automatiskt till 4:3 – tryck på en bild för att justera.">
+            <ImageManager initial={form.images} onChange={onImages} onBusyChange={setUploading} />
+          </Section>
+
+          <CollapsibleSection
+            title="Hämta bilens uppgifter"
+            description="Hämta allt från Transportstyrelsen i två steg – eller hoppa över och fyll i själv nedan."
+            defaultOpen={!form.make.trim() && !form.model.trim()}
+          >
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <div className="flex flex-col gap-3 rounded-[12px] bg-ios-fill2 p-4">
                 <p className="text-[15px] font-semibold">
@@ -677,11 +702,7 @@ function CarEditor({ car }: { car?: AdminCar }) {
               </div>
             </div>
             {lookupInfo && <p className="rounded-[12px] bg-ios-green/10 px-4 py-2.5 text-[14px] text-ios-label">{lookupInfo}</p>}
-          </Section>
-
-          <Section title="Bilder" description="Välj flera bilder på en gång. De beskärs automatiskt till 4:3 – tryck på en bild för att justera.">
-            <ImageManager initial={form.images} onChange={onImages} onBusyChange={setUploading} />
-          </Section>
+          </CollapsibleSection>
 
           <Section title="Grunduppgifter">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -820,16 +841,6 @@ function CarEditor({ car }: { car?: AdminCar }) {
               options={form.facts.optionalEquipment ?? []}
               onChange={(v) => setFact("equipment", v)}
             />
-            <div className="flex justify-end">
-              <Btn
-                variant="tinted"
-                icon={<Sparkles size={16} />}
-                disabled={aiBusy}
-                onClick={() => void onWriteWithAi()}
-              >
-                Klar – skriv annonstexten med AI
-              </Btn>
-            </div>
           </Section>
 
           <Section id="annonstext" title="Annonstext" description="Rubrik och text som visas på annonsen och följer med till Blocket.">
