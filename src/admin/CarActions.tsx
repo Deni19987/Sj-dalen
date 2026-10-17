@@ -196,11 +196,29 @@ function ExtendSheet({ car, onClose }: { car: AdminCar; onClose: () => void }) {
 function RelistSheet({ car, onClose }: { car: AdminCar; onClose: () => void }) {
   const [days, setDays] = useState(7);
   const [clearBids, setClearBids] = useState(true);
+  const [startPrice, setStartPrice] = useState(String(car.startPrice ?? ""));
+  const [minIncrement, setMinIncrement] = useState(String(car.minIncrement ?? ""));
+  const [reservePrice, setReservePrice] = useState(car.reservePrice != null ? String(car.reservePrice) : "");
   const action = useCarAction();
   const run = useRun();
+  const top = highestBid(car);
+  const n = (v: string) => (v.trim() === "" ? NaN : Number(v));
+  const valid = n(startPrice) >= 0 && n(minIncrement) >= 1;
 
   async function save() {
-    const ok = await run(() => action.mutateAsync({ id: car.id, action: "relist", days, clearBids }), "Bilen är utlagd igen");
+    const ok = await run(
+      () =>
+        action.mutateAsync({
+          id: car.id,
+          action: "relist",
+          days,
+          clearBids,
+          startPrice: n(startPrice),
+          minIncrement: n(minIncrement),
+          reservePrice: reservePrice.trim() === "" ? null : n(reservePrice),
+        }),
+      "Bilen är utlagd igen",
+    );
     if (ok) onClose();
   }
 
@@ -213,7 +231,7 @@ function RelistSheet({ car, onClose }: { car: AdminCar; onClose: () => void }) {
       footer={
         <>
           <Btn onClick={onClose}>Avbryt</Btn>
-          <Btn variant="primary" loading={action.isPending} onClick={save}>
+          <Btn variant="primary" loading={action.isPending} onClick={save} disabled={!valid}>
             Starta ny auktion
           </Btn>
         </>
@@ -228,6 +246,17 @@ function RelistSheet({ car, onClose }: { car: AdminCar; onClose: () => void }) {
               </button>
             ))}
           </div>
+        </Field>
+        <div className="grid grid-cols-2 items-start gap-3">
+          <Field label="Utropspris" hint={top ? `Högsta bud var ${kr(top.amount)}` : "Inga bud förra gången"}>
+            <Input type="number" inputMode="numeric" value={startPrice} onChange={(e) => setStartPrice(e.target.value)} suffix="kr" />
+          </Field>
+          <Field label="Budhöjning">
+            <Input type="number" inputMode="numeric" value={minIncrement} onChange={(e) => setMinIncrement(e.target.value)} suffix="kr" />
+          </Field>
+        </div>
+        <Field label="Reservationspris (valfritt)" hint="Lämna tomt för inget reservationspris.">
+          <Input type="number" inputMode="numeric" value={reservePrice} onChange={(e) => setReservePrice(e.target.value)} suffix="kr" placeholder="Inget" />
         </Field>
         <div className="rounded-[14px] bg-white px-4 py-3">
           <Toggle

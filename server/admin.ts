@@ -565,12 +565,22 @@ export async function handleAdmin(req: Request, path: string, deps: AdminDeps): 
         case "relist":
           assertComplete(car);
           if (bool(b.clearBids)) await query("delete from bids where car_id = $1", [id]);
+          // Nya priser kan sättas direkt när bilen läggs ut igen (annars behålls de gamla).
           await query(
             `update cars set status = 'active', sold_price = null, sold_at = null, extended = false,
                     ends_at = now() + make_interval(days => $2), updated_at = now(), deal = '{}',
-                    notified_ending_at = null, notified_ended_at = null, reminded_payment_at = null, reminded_pickup_at = null
+                    notified_ending_at = null, notified_ended_at = null, reminded_payment_at = null, reminded_pickup_at = null,
+                    start_price = coalesce($3, start_price), min_increment = coalesce($4, min_increment),
+                    reserve_price = case when $5 then $6 else reserve_price end
               where id = $1`,
-            [id, int(b.days, "dagar", 1, 60)],
+            [
+              id,
+              int(b.days, "dagar", 1, 60),
+              optInt(b.startPrice, "utropspris", 0, 100_000_000),
+              optInt(b.minIncrement, "budhöjning", 1, 1_000_000),
+              b.reservePrice !== undefined,
+              optInt(b.reservePrice, "reservationspris", 0, 100_000_000),
+            ],
           );
           break;
         case "publish":

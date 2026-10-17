@@ -77,3 +77,22 @@
     box-shadow: 0 0 0 3px rgba(0, 113, 227, 0);
   }
 }
+
+/*
+ * Safari på iPhone ger datum- och tidsfält en egen minsta bredd och centrerad text, så att de
+ * sticker ut ur sin ruta och trycker ut kortet. Låt dem bete sig som vanliga textfält.
+ */
+input[type="date"],
+input[type="datetime-local"],
+input[type="time"],
+input[type="month"] {
+  -webkit-appearance: none;
+  appearance: none;
+  min-width: 0;
+  max-width: 100%;
+  display: block;
+}
+input::-webkit-date-and-time-value {
+  text-align: left;
+  margin: 0;
+}
