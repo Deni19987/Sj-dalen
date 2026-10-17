@@ -1,14 +1,14 @@
 // Pushnotiser till personalens mobiler (Web Push), samma upplägg som i Carflow.
 //
 // Varje enhet som slår på notiser i admin sparas i push_subscriptions, med vilka slags
-// händelser den vill ha (bud, bokningar, meddelanden). VAPID-nycklarna skapas automatiskt
+// händelser den stängt av (muted) – nya notistyper är alltså påslagna från början. VAPID-nycklarna skapas automatiskt
 // första gången och sparas i settings-tabellen (nyckel 'vapid', lämnas aldrig ut utom den
 // publika delen) – eller sätts med VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY i Netlify.
 
 import { buildPushPayload, type PushSubscription } from "@block65/webcrypto-web-push";
-import type { Query } from "./handler";
+import { runStatements, type Query } from "./http";
 
-export const PUSH_TOPICS = ["bids", "bookings", "messages"] as const;
+export const PUSH_TOPICS = ["bids", "reserve", "ending", "ended", "followup", "chat", "sell", "bookings"] as const;
 export type PushTopic = (typeof PUSH_TOPICS)[number];
 
 export type PushPayload = {
@@ -28,17 +28,18 @@ interface Vapid {
 
 let tableReady: Promise<unknown> | null = null;
 export function ensurePushTable(query: Query) {
-  tableReady ??= query(`
+  tableReady ??= runStatements(query, `
     create table if not exists public.push_subscriptions (
       id          uuid primary key default gen_random_uuid(),
       endpoint    text not null unique,
       p256dh      text not null,
       auth        text not null,
       user_agent  text,
-      topics      text[] not null default '{bids,bookings,messages}',
+      muted       text[] not null default '{}',
       created_at  timestamptz not null default now(),
       updated_at  timestamptz not null default now()
-    )`).catch((err) => {
+    );
+    alter table public.push_subscriptions add column if not exists muted text[] not null default '{}';`).catch((err) => {
     tableReady = null;
     throw err;
   });
@@ -92,7 +93,7 @@ export async function sendPush(
     await ensurePushTable(query);
     const subs =
       typeof topic === "string"
-        ? await query("select id, endpoint, p256dh, auth from push_subscriptions where $1 = any(topics)", [topic])
+        ? await query("select id, endpoint, p256dh, auth from push_subscriptions where not ($1 = any(muted))", [topic])
         : await query("select id, endpoint, p256dh, auth from push_subscriptions where endpoint = $1", [topic.endpoint]);
     if (subs.length === 0) return result;
     const vapid = await getVapid(query, env);

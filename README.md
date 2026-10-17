@@ -161,6 +161,27 @@ skapas automatiskt första gången och sparas i databasen – inget behöver st�
 `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` (och ev. `VAPID_SUBJECT`) i Netlify. Utloggning stänger av notiserna på
 enheten; de slås på igen vid nästa inloggning.
 
+## Chatt, e-post och auktionsflöde
+
+**Chatt** (`server/chat.ts`, `src/components/chat/`, admin → Inkorg): kunden startar en chatt från bilsidan
+("Frågor om bilen?") med e-post + meddelande. Kontaktformuläret och "Sälj din bil" startar också en chatt, så att
+allt besvaras i Inkorgen. Båda sidor frågar efter nytt var 2,5 s medan chatten är öppen; kunden ser verkstadens
+namn (Inställningar → Chatten) med grön prick när personalen är inne och tre punkter när hen skriver, annars hur
+snabbt verkstaden brukar svara (median, börjar på 2 min). Kontaktmeddelanden och säljförfrågningar från före
+chatten flyttas in automatiskt.
+
+**E-post** (`server/mail.ts`): personalen trycker *Anslut Gmail* under Inställningar och loggar in hos Google
+(behörigheten gmail.send). Samma Google-klient som för registerutdrag används (`GMAIL_CLIENT_ID`,
+`GMAIL_CLIENT_SECRET`). Första gången ska `https://<sajt>/api/mail/callback` läggas till under *Authorized
+redirect URIs* i Google Cloud och Gmail API vara aktiverat. Mejl skickas när kunden fått svar i chatten men inte
+är kvar på sajten (ett per frånvaro), när någon blivit överbjuden och när auktionen är slut.
+
+**Auktionsflöde** (`server/auction.ts`, `netlify/functions/auction-checks.mts`, körs var 5:e minut): notis när en
+auktion slutar inom en timme och när den är avslutad (vinnare / under reservationspris / inga bud), mejl till
+högstbjudande, och påminnelse när betalning eller hämtning dröjer längre än villkoren. På bilens sida i admin
+finns *Efter auktionen* med stegen Vinnaren kontaktad → Betald → Hämtad. Kontrollen kan köras för hand med
+`POST /api/admin/checks`.
+
 ## Publicera på Netlify (befintligt konto)
 
 1. Netlify → **Add new site → Import an existing project** → välj detta GitHub-repo.

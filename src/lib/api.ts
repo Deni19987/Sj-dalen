@@ -93,6 +93,14 @@ export const DEFAULT_SETTINGS: SiteSettings = {
   ],
   company: { name: "Sjödalen Bilar AB", orgNumber: "", vatNumber: "" },
   auction: AUCTION_DEFAULTS,
+  chat: {
+    staffName: "",
+    quickReplies: [
+      "Hej! Tack för att du hör av dig.",
+      "Bilen finns att titta på och provköra vardagar 07.30–17.00. Vill du boka en tid?",
+      "Vi återkommer så snart vi kollat upp det.",
+    ],
+  },
   announcement: { enabled: false, text: "", link: "", tone: "info" },
 };
 
@@ -170,6 +178,7 @@ export async function fetchSettings(): Promise<SiteSettings> {
     ...data,
     company: { ...DEFAULT_SETTINGS.company, ...data.company },
     auction: { ...DEFAULT_SETTINGS.auction, ...data.auction },
+    chat: { ...DEFAULT_SETTINGS.chat, ...data.chat },
     announcement: { ...DEFAULT_SETTINGS.announcement, ...data.announcement },
   };
 }
@@ -213,10 +222,11 @@ export async function createBooking(input: BookingInput): Promise<Booking> {
   return booking;
 }
 
-export async function createSellRequest(input: SellRequestInput): Promise<void> {
-  if (!DEMO) await request("/sell-requests", { method: "POST", body: input });
+/** Startar en chatt med verkstaden (se server/chat.ts) – token används för att fortsätta i chatten. */
+export async function createSellRequest(input: SellRequestInput): Promise<{ token?: string }> {
+  return DEMO ? {} : request<{ token?: string }>("/sell-requests", { method: "POST", body: input });
 }
 
-export async function createContactMessage(input: ContactMessageInput): Promise<void> {
-  if (!DEMO) await request("/contact", { method: "POST", body: input });
+export async function createContactMessage(input: ContactMessageInput): Promise<{ token?: string }> {
+  return DEMO ? {} : request<{ token?: string }>("/contact", { method: "POST", body: input });
 }

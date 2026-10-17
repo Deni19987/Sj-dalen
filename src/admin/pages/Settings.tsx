@@ -4,6 +4,7 @@ import { cn } from "../../lib/cn";
 import { useSettings } from "../../lib/queries";
 import type { SiteSettings } from "../../lib/types";
 import { logout, useSaveSettings } from "../api";
+import { ChatSettingsCard, MailCard } from "../ChatSettings";
 import { PushSettingsCard } from "../PushNotifications";
 import { Btn, Card, Field, Input, LoadingBlock, PageHeader, Segmented, Toggle, useRun } from "../ui";
 
@@ -43,7 +44,7 @@ function SettingsForm({ initial }: { initial: SiteSettings }) {
     <div>
       <PageHeader
         title="Inställningar"
-        subtitle="Notiser, notisbanner och inloggning"
+        subtitle="Notiser, e-post, chatten, notisbanner och inloggning"
         actions={
           <Btn variant="primary" onClick={onSave} loading={save.isPending} disabled={!dirty}>
             Spara
@@ -53,6 +54,8 @@ function SettingsForm({ initial }: { initial: SiteSettings }) {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <PushSettingsCard />
+        <MailCard />
+        <ChatSettingsCard />
 
         <Card className="lg:col-span-2">
           <div className="flex items-start justify-between gap-4">

@@ -4,6 +4,9 @@
 import { ensureSchema, handleAdmin, serveImage } from "./admin";
 import type { AuthConfig } from "./auth";
 import { termsEffectiveDate } from "../src/lib/auction";
+import { onBidPlaced, topBid } from "./auction";
+import { handleChatPublic, startConversation } from "./chat";
+import { mailCallback, siteOrigin } from "./mail";
 import { sendPush } from "./push";
 import {
   body,
@@ -28,7 +31,6 @@ export interface HandlerOptions {
   env: Record<string, string | undefined>;
 }
 
-const kr = (n: number) => `${n.toLocaleString("sv-SE")} kr`;
 const short = (s: string, max = 120) => (s.length > max ? `${s.slice(0, max - 1).trimEnd()}…` : s);
 // "fre 17 okt kl. 09:00"
 function bookingTime(date: string, time: string) {
@@ -50,6 +52,11 @@ export function createHandler(query: Query, options: HandlerOptions) {
       if (path === "/admin" || path.startsWith("/admin/"))
         return await handleAdmin(req, path, { query, blobs: options.blobs, auth: options.auth, env: options.env });
       if (req.method === "GET" && path.startsWith("/images/")) return await serveImage(path, options.blobs);
+      if (path === "/chat" || path.startsWith("/chat/"))
+        return await handleChatPublic(req, path.split("/").filter(Boolean).slice(1).map(decodeURIComponent), query, options.env);
+      // Googles inloggning för "Anslut Gmail" kommer tillbaka hit (utan admin-token – state kontrolleras i stället).
+      if (req.method === "GET" && path === "/mail/callback")
+        return new Response(null, { status: 302, headers: { location: await mailCallback(query, options.env, req), ...NO_CACHE } });
 
       switch (route) {
         case "GET /services":
@@ -101,6 +108,7 @@ export function createHandler(query: Query, options: HandlerOptions) {
           if (b.acceptTerms !== true)
             throw new HttpError(400, "Du behöver godkänna auktionsvillkoren för att lägga bud.");
           await ensureSchema(query);
+          const prev = await topBid(query, String(b.carId));
           const rows = await query("select place_bid($1, $2, $3, $4, $5) as result", [
             str(b.carId, "bil", { max: 100 }),
             str(b.name, "namn", { max: 80 }),
@@ -117,13 +125,13 @@ export function createHandler(query: Query, options: HandlerOptions) {
               b.amount,
               termsEffectiveDate(settings[0]?.value?.auction),
             ]);
-            const car = (await query("select title from cars where id = $1", [b.carId]))[0];
-            await push("bids", {
-              title: `Nytt bud: ${kr(b.amount)}`,
-              body: `${car?.title ?? "Bil"} – ${short(String(b.name), 60)}${result.extended ? " (auktionen förlängd)" : ""}`,
-              url: `/admin/bud?bil=${encodeURIComponent(b.carId)}`,
-              tag: `bid-${b.carId}`,
-            });
+            await onBidPlaced(
+              query,
+              options.env,
+              siteOrigin(req),
+              { carId: b.carId, amount: b.amount, name: short(String(b.name).trim(), 60), email: String(b.email).trim(), extended: !!result.extended },
+              prev,
+            ).catch((err) => console.error("[auction] onBidPlaced", err));
           }
           return json(result);
         }
@@ -150,46 +158,37 @@ export function createHandler(query: Query, options: HandlerOptions) {
           return json(rows[0].result, 201);
         }
 
+        // "Sälj din bil" och kontaktformuläret startar en chatt, så att personalen svarar på allt i Inkorgen.
         case "POST /sell-requests": {
           const b = await body(req);
           const thisYear = new Date().getFullYear();
-          await query(
-            `insert into sell_requests (make, model, year, mileage_km, description, name, phone, email)
-             values ($1, $2, $3, $4, $5, $6, $7, $8)`,
-            [
-              str(b.make, "märke", { max: 60 }),
-              str(b.model, "modell", { max: 60 }),
-              int(b.year, "årsmodell", 1970, thisYear + 1),
-              int(b.mileageKm, "miltal", 0, 5_000_000),
-              str(b.description, "beskrivning", { max: 4000, optional: true }) ?? "",
-              str(b.name, "namn", { min: 2, max: 120 }),
-              str(b.phone, "telefon", { min: 6, max: 40 }),
-              email(b.email),
-            ],
-          );
-          await push("messages", {
-            title: "Någon vill sälja sin bil",
-            body: `${b.make} ${b.model} ${b.year}, ${Number(b.mileageKm).toLocaleString("sv-SE")} mil – ${short(String(b.name), 60)}`,
-            url: "/admin/inkorg",
-            tag: `sell-${Date.now()}`,
+          const details = {
+            make: str(b.make, "märke", { max: 60 }),
+            model: str(b.model, "modell", { max: 60 }),
+            year: int(b.year, "årsmodell", 1970, thisYear + 1),
+            mileageKm: int(b.mileageKm, "miltal", 0, 5_000_000),
+          };
+          const description = str(b.description, "beskrivning", { max: 4000, optional: true }) ?? "";
+          const conv = await startConversation(query, options.env, {
+            kind: "sell",
+            name: str(b.name, "namn", { min: 2, max: 120 })!,
+            phone: str(b.phone, "telefon", { min: 6, max: 40 })!,
+            email: email(b.email),
+            details,
+            message: description || `Jag vill sälja min bil: ${details.make} ${details.model} ${details.year}, ${details.mileageKm.toLocaleString("sv-SE")} mil.`,
           });
-          return json({ ok: true }, 201);
+          return json({ ok: true, token: conv.token }, 201);
         }
 
         case "POST /contact": {
           const b = await body(req);
-          await query("insert into contact_messages (name, email, message) values ($1, $2, $3)", [
-            str(b.name, "namn", { min: 2, max: 120 }),
-            email(b.email),
-            str(b.message, "meddelande", { min: 4, max: 5000 }),
-          ]);
-          await push("messages", {
-            title: `Meddelande från ${short(String(b.name).trim(), 60)}`,
-            body: short(String(b.message).trim().replace(/\s+/g, " ")),
-            url: "/admin/inkorg",
-            tag: `contact-${Date.now()}`,
+          const conv = await startConversation(query, options.env, {
+            kind: "contact",
+            name: str(b.name, "namn", { min: 2, max: 120 })!,
+            email: email(b.email),
+            message: str(b.message, "meddelande", { min: 4, max: 4000 })!,
           });
-          return json({ ok: true }, 201);
+          return json({ ok: true, token: conv.token }, 201);
         }
 
         default:

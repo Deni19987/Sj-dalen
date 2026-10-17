@@ -2,10 +2,22 @@
 import { pushApi, type PushTopic } from "./api";
 
 export const TOPIC_LABELS: Record<PushTopic, { label: string; description: string }> = {
-  bids: { label: "Nya bud", description: "När någon lägger ett bud på en bil" },
+  bids: { label: "Nya bud", description: "Varje bud, och om auktionen förlängs av ett sent bud" },
+  reserve: { label: "Reservationspris uppnått", description: "När ett bud når bilens reservationspris" },
+  ending: { label: "Slutar inom en timme", description: "Med högsta bud och antal bud just då" },
+  ended: { label: "Auktion avslutad", description: "Vinnaren, under reservationspris eller inga bud" },
+  followup: { label: "Betalning och hämtning", description: "Påminnelse när betalning eller hämtning dröjer längre än villkoren" },
+  chat: { label: "Chattmeddelanden", description: "När en kund skriver i chatten eller kontaktformuläret" },
+  sell: { label: "Sälj din bil", description: "När någon vill sälja sin bil till er" },
   bookings: { label: "Nya bokningar", description: "När en kund bokar tid i verkstaden" },
-  messages: { label: "Nya meddelanden", description: "Kontaktformuläret och ”Sälj din bil”" },
 };
+
+/** Grupperna i notissektionen under Inställningar. */
+export const TOPIC_GROUPS: { title: string; topics: PushTopic[] }[] = [
+  { title: "Auktioner", topics: ["bids", "reserve", "ending", "ended", "followup"] },
+  { title: "Kunder", topics: ["chat", "sell"] },
+  { title: "Verkstad", topics: ["bookings"] },
+];
 
 export function isPushSupported() {
   return typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;

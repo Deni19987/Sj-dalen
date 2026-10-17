@@ -6,6 +6,7 @@ import { AuctionPage } from "./pages/AuctionPage";
 import { AuctionTermsPage } from "./pages/AuctionTermsPage";
 import { BookingPage } from "./pages/BookingPage";
 import { CarDetailPage } from "./pages/CarDetailPage";
+import { ChatPage } from "./pages/ChatPage";
 import { ContactPage } from "./pages/ContactPage";
 import { FaqPage } from "./pages/FaqPage";
 import { HomePage } from "./pages/HomePage";
@@ -30,6 +31,7 @@ const sellRoute = createRoute({ getParentRoute: () => rootRoute, path: "/auktion
 const soldRoute = createRoute({ getParentRoute: () => rootRoute, path: "/auktion/salda", component: SoldPage });
 const termsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/auktion/villkor", component: AuctionTermsPage });
 const privacyRoute = createRoute({ getParentRoute: () => rootRoute, path: "/integritet", component: PrivacyPage });
+const chatRoute = createRoute({ getParentRoute: () => rootRoute, path: "/chatt/$token", component: ChatPage });
 const carRoute = createRoute({ getParentRoute: () => rootRoute, path: "/auktion/$id", component: CarDetailPage });
 
 const bookingRoute = createRoute({
@@ -59,6 +61,7 @@ const adminCarEditRoute = adminPage("/bilar/$id", "CarEditorPage");
 const adminBlocketRoute = adminPage("/bilar/$id/blocket", "BlocketWindowPage");
 const adminBidsRoute = adminPage("/bud", "BidsPage");
 const adminInboxRoute = adminPage("/inkorg", "InboxPage");
+const adminInboxThreadRoute = adminPage("/inkorg/$id", "InboxPage");
 const adminBookingsRoute = adminPage("/bokningar", "BookingsPage");
 const adminContentRoute = adminPage("/innehall", "ContentPage");
 const adminSettingsRoute = adminPage("/installningar", "SettingsPage");
@@ -75,6 +78,7 @@ const routeTree = rootRoute.addChildren([
   soldRoute,
   termsRoute,
   privacyRoute,
+  chatRoute,
   carRoute,
   adminRoute.addChildren([
     adminOverviewRoute,
@@ -84,6 +88,7 @@ const routeTree = rootRoute.addChildren([
     adminBlocketRoute,
     adminBidsRoute,
     adminInboxRoute,
+    adminInboxThreadRoute,
     adminBookingsRoute,
     adminContentRoute,
     adminSettingsRoute,

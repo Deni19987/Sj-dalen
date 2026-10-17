@@ -9,6 +9,7 @@ import {
   needsHomeScreen,
   registerPushServiceWorker,
   restorePushAfterSignIn,
+  TOPIC_GROUPS,
   TOPIC_LABELS,
 } from "./push";
 import { Btn, Card, Sheet, Toggle, useFeedback, useRun } from "./ui";
@@ -135,19 +136,25 @@ export function PushSettingsCard() {
           </Btn>
         )}
         {state === "on" && (
-          <div className="space-y-1">
-            <div className="divide-y divide-black/[.06] rounded-[14px] bg-ios-fill2 px-4">
-              {ALL_TOPICS.map((t) => (
-                <div key={t} className="py-2.5">
-                  <Toggle
-                    checked={topics.includes(t)}
-                    onChange={(v) => toggleTopic(t, v)}
-                    label={TOPIC_LABELS[t].label}
-                    description={TOPIC_LABELS[t].description}
-                  />
+          <div className="space-y-4">
+            <p className="text-[13px] text-ios-secondary">Välj vilka notiser den här enheten ska få.</p>
+            {TOPIC_GROUPS.map((g) => (
+              <div key={g.title}>
+                <p className="mb-1.5 px-1 text-[12px] font-semibold uppercase tracking-wide text-ios-tertiary">{g.title}</p>
+                <div className="divide-y divide-black/[.06] rounded-[14px] bg-ios-fill2 px-4">
+                  {g.topics.map((t) => (
+                    <div key={t} className="py-2.5">
+                      <Toggle
+                        checked={topics.includes(t)}
+                        onChange={(v) => toggleTopic(t, v)}
+                        label={TOPIC_LABELS[t].label}
+                        description={TOPIC_LABELS[t].description}
+                      />
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
             <div className="mt-3 flex flex-wrap gap-2">
               <Btn size="sm" variant="plain" onClick={() => endpoint && run(() => pushApi.test(endpoint), "Testnotisen är skickad")}>
                 Skicka en testnotis

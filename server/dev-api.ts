@@ -47,7 +47,7 @@ async function toRequest(req: IncomingMessage): Promise<Request> {
   const headers = new Headers();
   for (const [k, v] of Object.entries(req.headers)) if (typeof v === "string") headers.set(k, v);
   const hasBody = req.method !== "GET" && req.method !== "HEAD";
-  return new Request(`http://localhost${req.url}`, {
+  return new Request(`http://${req.headers.host ?? "localhost"}${req.url}`, {
     method: req.method,
     headers,
     body: hasBody ? Buffer.concat(chunks) : undefined,

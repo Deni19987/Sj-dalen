@@ -113,7 +113,7 @@ const ACTIVITY_ICON = {
 
 const ACTIVITY_TEXT = {
   bid: "lade ett bud",
-  message: "skickade ett meddelande",
+  message: "skrev i chatten",
   sell: "vill sälja sin bil",
   booking: "bokade en tid",
 };
@@ -233,7 +233,8 @@ export function OverviewPage() {
             <ul className="divide-y divide-black/[.05]">
               {overview.data?.activity.map((a) => {
                 const meta = ACTIVITY_ICON[a.kind];
-                const to = a.kind === "bid" ? "/admin/bud" : a.kind === "booking" ? "/admin/bokningar" : "/admin/inkorg";
+                const to =
+                  a.kind === "bid" ? "/admin/bud" : a.kind === "booking" ? "/admin/bokningar" : a.ref ? `/admin/inkorg/${a.ref}` : "/admin/inkorg";
                 return (
                   <li key={`${a.kind}-${a.id}`}>
                     <Link to={to} className="flex gap-3 px-4 py-3 transition hover:bg-ios-fill2">

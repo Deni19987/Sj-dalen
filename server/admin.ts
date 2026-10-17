@@ -21,6 +21,9 @@ import {
 } from "./http";
 import { equipmentSuggestions, writeCarAd } from "./ai";
 import { AUCTION_DEFAULTS } from "../src/lib/auction";
+import { ensureAuctionFlowSchema, runAuctionChecks } from "./auction";
+import { handleChatAdmin, unreadConversations } from "./chat";
+import { disconnectMail, getMailAccount, mailAuthUrl, mailConfigured, redirectUri, sendMail, siteOrigin } from "./mail";
 import { ensurePushTable, getVapid, PUSH_TOPICS, sendPush } from "./push";
 import { lookupVehicle, type Env } from "./vehicle-lookup";
 
@@ -258,6 +261,10 @@ function settingsValue(b: Record<string, any>) {
       storageFee: int(au.storageFee, "förvaringsavgift", 0, 10_000),
       cancelAfterDays: int(au.cancelAfterDays, "dagar innan köpet hävs", 7, 180),
     } as { paymentDays: number; pickupDays: number; storageFee: number; cancelAfterDays: number; updatedAt?: string },
+    chat: {
+      staffName: text((b.chat ?? {}).staffName, "namn i chatten", 40),
+      quickReplies: strList((b.chat ?? {}).quickReplies, "snabbsvar", { maxItems: 12, max: 500 }),
+    },
     announcement: { enabled: bool(ann.enabled), text: text(ann.text, "notis", 200), link, tone },
   };
 }
@@ -304,12 +311,14 @@ async function handlePush(req: Request, action: string | undefined, { query, env
   const b = await body(req);
   const endpoint = str(b.endpoint, "endpoint", { max: 1000 })!;
   if (!/^https:\/\//.test(endpoint)) throw new HttpError(400, "Ogiltig prenumeration.");
-  const topics = (v: unknown) => (Array.isArray(v) ? PUSH_TOPICS.filter((t) => v.includes(t)) : [...PUSH_TOPICS]);
+  // API:t pratar om påslagna typer (topics); i databasen sparas de avstängda (muted).
+  const mutedFrom = (v: unknown) => (Array.isArray(v) ? PUSH_TOPICS.filter((t) => !v.includes(t)) : []);
+  const enabled = (muted: string[] = []) => PUSH_TOPICS.filter((t) => !muted.includes(t));
 
   switch (action) {
     case "status": {
-      const row = (await query("select topics from push_subscriptions where endpoint = $1", [endpoint]))[0];
-      return json({ subscribed: !!row, topics: row?.topics ?? [...PUSH_TOPICS] }, 200, NO_CACHE);
+      const row = (await query("select muted from push_subscriptions where endpoint = $1", [endpoint]))[0];
+      return json({ subscribed: !!row, topics: enabled(row?.muted) }, 200, NO_CACHE);
     }
     case "subscribe": {
       const keys = (b.keys ?? {}) as Record<string, unknown>;
@@ -317,21 +326,22 @@ async function handlePush(req: Request, action: string | undefined, { query, env
       // Samma enhet som prenumererat förut med en annan adress: ersätt den gamla.
       if (userAgent) await query("delete from push_subscriptions where user_agent = $1 and endpoint <> $2", [userAgent, endpoint]);
       const rows = await query(
-        `insert into push_subscriptions (endpoint, p256dh, auth, user_agent, topics) values ($1, $2, $3, $4, $5)
+        `insert into push_subscriptions (endpoint, p256dh, auth, user_agent, muted) values ($1, $2, $3, $4, $5)
          on conflict (endpoint) do update set p256dh = excluded.p256dh, auth = excluded.auth,
-           user_agent = excluded.user_agent, updated_at = now()
-         returning topics`,
-        [endpoint, str(keys.p256dh, "nyckel", { max: 200 }), str(keys.auth, "nyckel", { max: 100 }), userAgent || null, topics(b.topics)],
+           user_agent = excluded.user_agent, updated_at = now(),
+           muted = case when $6 then excluded.muted else push_subscriptions.muted end
+         returning muted`,
+        [endpoint, str(keys.p256dh, "nyckel", { max: 200 }), str(keys.auth, "nyckel", { max: 100 }), userAgent || null, mutedFrom(b.topics), Array.isArray(b.topics)],
       );
-      return json({ subscribed: true, topics: rows[0].topics }, 200, NO_CACHE);
+      return json({ subscribed: true, topics: enabled(rows[0].muted) }, 200, NO_CACHE);
     }
     case "topics": {
-      const rows = await query("update push_subscriptions set topics = $2, updated_at = now() where endpoint = $1 returning topics", [
+      const rows = await query("update push_subscriptions set muted = $2, updated_at = now() where endpoint = $1 returning muted", [
         endpoint,
-        topics(b.topics),
+        mutedFrom(b.topics),
       ]);
       if (!rows.length) throw new HttpError(404, "Notiser är inte påslagna på den här enheten.");
-      return json({ subscribed: true, topics: rows[0].topics }, 200, NO_CACHE);
+      return json({ subscribed: true, topics: enabled(rows[0].muted) }, 200, NO_CACHE);
     }
     case "unsubscribe":
       await query("delete from push_subscriptions where endpoint = $1", [endpoint]);
@@ -345,6 +355,45 @@ async function handlePush(req: Request, action: string | undefined, { query, env
       });
       if (r.sent === 0) throw new HttpError(502, r.errors[0] ? `Notisen kunde inte skickas: ${r.errors[0]}` : "Notiser är inte påslagna på den här enheten.");
       return json({ ok: true }, 200, NO_CACHE);
+    }
+  }
+  throw new HttpError(404, "Hittades inte.");
+}
+
+/* ------------------------------------------------------------------ */
+/* E-post (Anslut Gmail, se server/mail.ts)                             */
+/* ------------------------------------------------------------------ */
+
+async function handleMail(req: Request, action: string | undefined, { query, env }: AdminDeps): Promise<Response> {
+  if (req.method === "GET" && !action) {
+    const acc = await getMailAccount(query);
+    return json(
+      { configured: mailConfigured(env), connected: !!acc, email: acc?.email ?? null, connectedAt: acc?.connectedAt ?? null, redirectUri: redirectUri(req) },
+      200,
+      NO_CACHE,
+    );
+  }
+  if (req.method !== "POST") throw new HttpError(404, "Hittades inte.");
+  switch (action) {
+    case "connect":
+      return json({ url: await mailAuthUrl(query, env, req) }, 200, NO_CACHE);
+    case "disconnect":
+      await disconnectMail(query);
+      return json({ ok: true }, 200, NO_CACHE);
+    case "test": {
+      const acc = await getMailAccount(query);
+      if (!acc) throw new HttpError(400, "E-post är inte ansluten.");
+      const r = await sendMail(query, env, {
+        to: acc.email,
+        fromName: "Sjödalen Bilar",
+        subject: "Testmejl från webbplatsen",
+        heading: "E-posten fungerar",
+        paragraphs: ["Det här är ett testmejl. Så här ser mejlen ut som kunderna får, t.ex. när du svarar i chatten."],
+        quote: { from: "Verkstaden", text: "Hej! Bilen finns att titta på vardagar 07.30–17.00." },
+        button: { label: "Öppna chatten och svara", url: siteOrigin(req) },
+      });
+      if (!r.ok) throw new HttpError(502, r.error ?? "Mejlet kunde inte skickas.");
+      return json({ ok: true, to: acc.email }, 200, NO_CACHE);
     }
   }
   throw new HttpError(404, "Hittades inte.");
@@ -371,9 +420,16 @@ export async function handleAdmin(req: Request, path: string, deps: AdminDeps): 
   if (!(await verifyToken(deps.auth, bearer(req)))) throw new HttpError(401, "Du är utloggad. Logga in igen.");
 
   if (section === "push") return handlePush(req, id, deps);
+  if (section === "chats") return handleChatAdmin(req, id, sub, query, deps.env);
+  if (section === "mail") return handleMail(req, id, deps);
+  if (section === "checks" && method === "POST")
+    return json({ done: await runAuctionChecks(query, deps.env, siteOrigin(req)) }, 200, NO_CACHE);
 
   const route = `${method} ${section}${id ? "/:id" : ""}${sub ? `/${sub}` : ""}`;
-  if (section === "cars") await ensureSchema(query);
+  if (section === "cars") {
+    await ensureSchema(query);
+    await ensureAuctionFlowSchema(query);
+  }
 
   switch (route) {
     case "GET session":
@@ -381,6 +437,7 @@ export async function handleAdmin(req: Request, path: string, deps: AdminDeps): 
 
     /* ---------------- Översikt ---------------- */
     case "GET overview": {
+      const unread = await unreadConversations(query); // skapar även chattabellerna första gången
       const [stats] = await query(`
         select
           (select count(*)::int from cars where status = 'active' and ends_at > now()) as active_cars,
@@ -392,11 +449,11 @@ export async function handleAdmin(req: Request, path: string, deps: AdminDeps): 
           (select count(distinct lower(name))::int from bids where created_at > now() - interval '30 days') as bidders_30d,
           (select coalesce(sum(greatest(c.start_price, coalesce((select max(amount) from bids b where b.car_id = c.id), 0))), 0)::float8
              from cars c where c.status = 'active' and c.ends_at > now()) as live_value,
-          (select count(*)::int from contact_messages where status = 'new') +
-          (select count(*)::int from sell_requests where status = 'new') as new_messages,
+          0 as new_messages,
           (select count(*)::int from bookings where date = current_date and status = 'booked') as bookings_today,
           (select count(*)::int from bookings where date >= current_date and status = 'booked') as bookings_upcoming`);
 
+      stats.new_messages = unread;
       const bidsPerDay = await query(`
         select d::date::text as day, coalesce(count(b.id), 0)::int as count
           from generate_series(current_date - 13, current_date, interval '1 day') d
@@ -408,11 +465,10 @@ export async function handleAdmin(req: Request, path: string, deps: AdminDeps): 
                 b.car_id as ref, b.created_at
            from bids b join cars c on c.id = b.car_id order by b.created_at desc limit 12)
         union all
-        (select 'message', id::text, name, left(message, 120), null, null, created_at
-           from contact_messages order by created_at desc limit 8)
-        union all
-        (select 'sell', id::text, name, make || ' ' || model || ' ' || year, null, null, created_at
-           from sell_requests order by created_at desc limit 8)
+        (select case when c.kind = 'sell' then 'sell' else 'message' end, c.id::text, coalesce(nullif(c.name, ''), c.email),
+                left(m.body, 120), null, c.id::text, m.created_at
+           from conversation_messages m join conversations c on c.id = m.conversation_id
+          where m.sender = 'customer' order by m.created_at desc limit 8)
         union all
         (select 'booking', id, name, service_name || ' · ' || date::text || ' ' || time, null, null, created_at
            from bookings order by created_at desc limit 8)
@@ -487,14 +543,15 @@ export async function handleAdmin(req: Request, path: string, deps: AdminDeps): 
     case "POST cars/:id/actions": {
       const car = await getCar(query, id);
       const b = await body(req);
-      const action = oneOf(b.action, "åtgärd", ["end", "extend", "sell", "relist", "publish", "unpublish", "duplicate"] as const);
+      const action = oneOf(b.action, "åtgärd", ["end", "extend", "sell", "relist", "publish", "unpublish", "duplicate", "deal"] as const);
       switch (action) {
         case "end":
           await query("update cars set ends_at = now(), updated_at = now() where id = $1", [id]);
           break;
         case "extend":
           await query(
-            "update cars set ends_at = greatest(ends_at, now()) + make_interval(hours => $2), updated_at = now() where id = $1",
+            `update cars set ends_at = greatest(ends_at, now()) + make_interval(hours => $2), updated_at = now(),
+                    notified_ending_at = null, notified_ended_at = null where id = $1`,
             [id, int(b.hours, "timmar", 1, 24 * 60)],
           );
           break;
@@ -509,7 +566,9 @@ export async function handleAdmin(req: Request, path: string, deps: AdminDeps): 
           if (bool(b.clearBids)) await query("delete from bids where car_id = $1", [id]);
           await query(
             `update cars set status = 'active', sold_price = null, sold_at = null, extended = false,
-                    ends_at = now() + make_interval(days => $2), updated_at = now() where id = $1`,
+                    ends_at = now() + make_interval(days => $2), updated_at = now(), deal = '{}',
+                    notified_ending_at = null, notified_ended_at = null, reminded_payment_at = null, reminded_pickup_at = null
+              where id = $1`,
             [id, int(b.days, "dagar", 1, 60)],
           );
           break;
@@ -519,6 +578,20 @@ export async function handleAdmin(req: Request, path: string, deps: AdminDeps): 
             throw new HttpError(400, "Sluttiden har redan passerat. Välj en ny sluttid innan du publicerar.");
           await query("update cars set status = 'active', updated_at = now() where id = $1", [id]);
           break;
+        // Efter auktionen: Vinnaren kontaktad → Betald → Hämtad (bocka i/ur)
+        case "deal": {
+          const step = oneOf(b.step, "steg", ["contactedAt", "paidAt", "pickedUpAt"] as const);
+          await query(
+            bool(b.done)
+              ? `update cars set deal = jsonb_set(coalesce(deal, '{}'), array[$2::text], to_jsonb(now())), updated_at = now() where id = $1`
+              : `update cars set deal = coalesce(deal, '{}') - $2::text, updated_at = now(),
+                        reminded_payment_at = case when $2 in ('contactedAt','paidAt') then null else reminded_payment_at end,
+                        reminded_pickup_at = case when $2 in ('paidAt','pickedUpAt') then null else reminded_pickup_at end
+                  where id = $1`,
+            [id, step],
+          );
+          break;
+        }
         case "unpublish":
           await query("update cars set status = 'draft', updated_at = now() where id = $1", [id]);
           break;

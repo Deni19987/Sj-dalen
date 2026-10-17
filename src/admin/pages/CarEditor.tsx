@@ -6,6 +6,7 @@ import { cn } from "../../lib/cn";
 import type { BodyType, Car, CarStatus } from "../../lib/types";
 import { lookupVehicle, suggestStandardEquipment, useAdminCars, useDeleteBid, useSaveCar, writeAdWithAi, type AdminCar, type CarFacts, type CarInput, type VehicleData } from "../api";
 import { BlocketSheet } from "../BlocketSheet";
+import { DealCard } from "../DealCard";
 import { EquipmentPicker } from "../EquipmentPicker";
 import { BackLink } from "../../components/BackLink";
 import { MAKES } from "../../lib/vehicle";
@@ -852,6 +853,7 @@ function CarEditor({ car }: { car?: AdminCar }) {
 
         {/* Sidokolumn */}
         <div className="space-y-6 lg:sticky lg:top-24 lg:self-start">
+          {car && <DealCard car={car} />}
           <Section title="Publicering">
             <Field label="Status">
               <Select value={form.status} onChange={(e) => set("status", e.target.value as CarStatus)}>

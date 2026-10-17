@@ -17,6 +17,8 @@ import {
   ChevronDown,
   Cog,
   ListChecks,
+  MessageCircle,
+  Phone,
   Route,
 } from "lucide-react";
 import { BackLink } from "../components/BackLink";
@@ -28,8 +30,9 @@ import { CarGallery } from "../components/CarGallery";
 import { Countdown } from "../components/Countdown";
 import { bidsNewestFirst, currentPrice, isEnded, minNextBid } from "../lib/auction";
 import { cn } from "../lib/cn";
-import { formatKm, formatPrice, timeAgo } from "../lib/format";
-import { useCars, usePlaceBid } from "../lib/queries";
+import { formatKm, formatPrice, telHref, timeAgo } from "../lib/format";
+import { useChatPanel } from "../components/chat/ChatProvider";
+import { useCars, usePlaceBid, useSettings } from "../lib/queries";
 import type { BidResult, Car } from "../lib/types";
 import { useWatch } from "../lib/watchlist";
 
@@ -168,6 +171,38 @@ function BidForm({ car }: { car: Car }) {
         </p>
       )}
     </form>
+  );
+}
+
+/** Frågor om bilen: ring eller chatta – nära budrutan. */
+function ContactBox({ car }: { car: Car }) {
+  const { data: settings } = useSettings();
+  const { openChat } = useChatPanel();
+  return (
+    <div className="mt-5 rounded-2xl border border-graphite-100 p-4">
+      <p className="text-sm font-bold text-graphite-900">Frågor om bilen?</p>
+      <p className="mt-0.5 text-sm text-graphite-500">Ring oss eller skriv i chatten – vi svarar snabbt.</p>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        {settings?.phone && (
+          <a
+            href={telHref(settings.phone)}
+            className="flex items-center justify-center gap-2 rounded-full bg-graphite-100 px-3 py-2.5 text-sm font-semibold text-graphite-900 transition-colors hover:bg-graphite-200"
+          >
+            <Phone size={16} /> Ring
+          </a>
+        )}
+        <button
+          type="button"
+          onClick={() => openChat({ carId: car.id, carTitle: carName(car) })}
+          className={cn(
+            "flex items-center justify-center gap-2 rounded-full bg-blue-500 px-3 py-2.5 text-sm font-semibold text-white transition-[background-color,transform] duration-150 hover:bg-blue-600 active:scale-[.98]",
+            !settings?.phone && "col-span-2",
+          )}
+        >
+          <MessageCircle size={16} /> Chatta med oss
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -317,6 +352,7 @@ export function CarDetailPage() {
                   <BidForm key={car.id} car={car} />
                 </div>
               )}
+              <ContactBox car={car} />
               <div className="mt-6 border-t border-graphite-100 pt-5">
                 <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-graphite-500">Budhistorik</h2>
                 <BidHistory car={car} />
