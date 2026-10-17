@@ -134,6 +134,8 @@ alter table public.cars alter column start_price drop not null;
 -- Budgivarens kontaktuppgifter (visas bara i admin)
 alter table public.bids add column if not exists email text;
 alter table public.bids add column if not exists phone text;
+-- Version av auktionsvillkoren som budgivaren godkände (se AUCTION_TERMS_VERSION i src/lib/auction.ts)
+alter table public.bids add column if not exists terms_version text;
 
 -- Bilder: själva filerna ligger i Netlify Blobs, här finns metadata
 create table if not exists public.images (
@@ -167,6 +169,18 @@ create unique index if not exists bookings_slot_active_uidx on public.bookings(d
 create table if not exists public.settings (
   key         text primary key,
   value       jsonb not null,
+  updated_at  timestamptz not null default now()
+);
+
+-- Personalens enheter som tar emot pushnotiser (se server/push.ts). VAPID-nycklarna ligger i settings ('vapid').
+create table if not exists public.push_subscriptions (
+  id          uuid primary key default gen_random_uuid(),
+  endpoint    text not null unique,
+  p256dh      text not null,
+  auth        text not null,
+  user_agent  text,
+  muted       text[] not null default '{}',   -- notistyper enheten stängt av
+  created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now()
 );
 
@@ -270,3 +284,63 @@ stable
 as $$
   select b.time as slot from public.bookings b where b.date = p_date and b.status <> 'cancelled';
 $$;
+
+-- =====================================================================
+-- Chatt mellan kunder och verkstaden (samma SQL som CHAT_SCHEMA i server/chat.ts)
+-- =====================================================================
+create table if not exists public.conversations (
+  id                 uuid primary key default gen_random_uuid(),
+  token              text not null unique,
+  kind               text not null default 'chat' check (kind in ('chat','contact','sell')),
+  name               text not null default '',
+  email              text not null,
+  phone              text not null default '',
+  car_id             text references public.cars(id) on delete set null,
+  details            jsonb not null default '{}',
+  status             text not null default 'open' check (status in ('open','archived')),
+  created_at         timestamptz not null default now(),
+  last_message_at    timestamptz not null default now(),
+  customer_seen_at   timestamptz,
+  customer_typing_at timestamptz,
+  customer_read_at   timestamptz,
+  staff_seen_at      timestamptz,
+  staff_typing_at    timestamptz,
+  staff_read_at      timestamptz,
+  last_email_at      timestamptz,
+  legacy_ref         text unique
+);
+create index if not exists conversations_last_idx on public.conversations(last_message_at desc);
+
+create table if not exists public.conversation_messages (
+  id               uuid primary key default gen_random_uuid(),
+  conversation_id  uuid not null references public.conversations(id) on delete cascade,
+  sender           text not null check (sender in ('customer','staff')),
+  body             text not null check (char_length(body) between 1 and 4000),
+  created_at       timestamptz not null default now()
+);
+create index if not exists conversation_messages_conv_idx on public.conversation_messages(conversation_id, created_at);
+
+-- Kontaktmeddelanden och säljförfrågningar från före chatten blir konversationer (körs om utan dubbletter).
+insert into public.conversations (token, kind, name, email, details, status, created_at, last_message_at, staff_read_at, legacy_ref)
+select replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', ''), 'contact', name, email, '{}',
+       case when status = 'archived' then 'archived' else 'open' end, created_at, created_at,
+       case when status = 'new' then null else now() end, 'contact:' || id
+  from public.contact_messages
+on conflict (legacy_ref) do nothing;
+insert into public.conversation_messages (conversation_id, sender, body, created_at)
+select c.id, 'customer', m.message, m.created_at
+  from public.contact_messages m join public.conversations c on c.legacy_ref = 'contact:' || m.id
+ where not exists (select 1 from public.conversation_messages x where x.conversation_id = c.id);
+
+insert into public.conversations (token, kind, name, email, phone, details, status, created_at, last_message_at, staff_read_at, legacy_ref)
+select replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', ''), 'sell', name, email, phone,
+       jsonb_build_object('make', make, 'model', model, 'year', year, 'mileageKm', mileage_km),
+       case when status = 'archived' then 'archived' else 'open' end, created_at, created_at,
+       case when status = 'new' then null else now() end, 'sell:' || id
+  from public.sell_requests
+on conflict (legacy_ref) do nothing;
+insert into public.conversation_messages (conversation_id, sender, body, created_at)
+select c.id, 'customer',
+       coalesce(nullif(m.description, ''), 'Jag vill sälja min bil: ' || m.make || ' ' || m.model || ' ' || m.year || '.'), m.created_at
+  from public.sell_requests m join public.conversations c on c.legacy_ref = 'sell:' || m.id
+ where not exists (select 1 from public.conversation_messages x where x.conversation_id = c.id);

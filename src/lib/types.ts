@@ -21,6 +21,8 @@ export interface Bid {
   /** Bara i admin */
   email?: string;
   phone?: string;
+  /** Bara i admin: vilken version av auktionsvillkoren budgivaren godkände */
+  termsVersion?: string;
 }
 
 export interface Car {
@@ -74,6 +76,12 @@ export interface SiteSettings {
   email: string;
   address: string;
   hours: OpeningHours[];
+  /** Juridiska uppgifter som visas i sidfoten, villkoren och integritetspolicyn. */
+  company: { name: string; orgNumber: string; vatNumber: string };
+  /** Siffror i auktionsvillkoren. updatedAt sätts av servern när någon av dem ändras. */
+  auction: { paymentDays: number; pickupDays: number; storageFee: number; cancelAfterDays: number; updatedAt?: string };
+  /** Chatten: namnet kunden ser när personalen är inne, och färdiga snabbsvar i admin. */
+  chat: { staffName: string; quickReplies: string[] };
   announcement: { enabled: boolean; text: string; link: string; tone: "info" | "warning" };
 }
 
@@ -131,6 +139,8 @@ export interface BidInput {
   amount: number;
   email: string;
   phone: string;
+  /** Budgivaren har godkänt auktionsvillkoren (krävs). */
+  acceptTerms: boolean;
 }
 
 export interface BidResult {

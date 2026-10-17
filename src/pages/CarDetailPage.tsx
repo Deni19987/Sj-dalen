@@ -17,6 +17,8 @@ import {
   ChevronDown,
   Cog,
   ListChecks,
+  MessageCircle,
+  Phone,
   Route,
 } from "lucide-react";
 import { BackLink } from "../components/BackLink";
@@ -28,8 +30,9 @@ import { CarGallery } from "../components/CarGallery";
 import { Countdown } from "../components/Countdown";
 import { bidsNewestFirst, currentPrice, isEnded, minNextBid } from "../lib/auction";
 import { cn } from "../lib/cn";
-import { formatKm, formatPrice, timeAgo } from "../lib/format";
-import { useCars, usePlaceBid } from "../lib/queries";
+import { formatKm, formatPrice, telHref, timeAgo } from "../lib/format";
+import { useChatPanel } from "../components/chat/ChatProvider";
+import { useCars, usePlaceBid, useSettings } from "../lib/queries";
 import type { BidResult, Car } from "../lib/types";
 import { useWatch } from "../lib/watchlist";
 
@@ -54,6 +57,7 @@ function BidForm({ car }: { car: Car }) {
   const [bidder, setBidder] = useState(readBidder);
   const [amount, setAmount] = useState(String(min));
   const [result, setResult] = useState<BidResult | null>(null);
+  const [accepted, setAccepted] = useState(false);
 
   // Om någon annan bjuder över medan sidan är öppen: höj förslaget till nytt minsta bud.
   useEffect(() => {
@@ -75,8 +79,10 @@ function BidForm({ car }: { car: Car }) {
     if (!EMAIL_RE.test(email)) return setResult({ ok: false, message: "Ange en giltig e-postadress." });
     if (phone.replace(/\D/g, "").length < 6) return setResult({ ok: false, message: "Ange ditt telefonnummer." });
     if (!Number.isFinite(value)) return setResult({ ok: false, message: "Ange ett giltigt belopp." });
+    if (!accepted)
+      return setResult({ ok: false, message: "Du behöver godkänna auktionsvillkoren för att lägga bud." });
     placeBid.mutate(
-      { carId: car.id, name, email, phone, amount: value },
+      { carId: car.id, name, email, phone, amount: value, acceptTerms: true },
       {
         onSuccess: (r) => {
           setResult(r);
@@ -118,6 +124,21 @@ function BidForm({ car }: { car: Car }) {
           className={INPUT}
         />
       </div>
+      <label className="mt-3 flex cursor-pointer items-start gap-3 text-sm text-graphite-700">
+        <input
+          type="checkbox"
+          checked={accepted}
+          onChange={(e) => setAccepted(e.target.checked)}
+          className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer rounded accent-blue-500"
+        />
+        <span>
+          Jag har läst och godkänner{" "}
+          <Link to="/auktion/villkor" target="_blank" className="font-semibold text-blue-600 hover:underline">
+            auktionsvillkoren
+          </Link>{" "}
+          och förstår att <strong>mitt bud är bindande och inte kan dras tillbaka</strong>.
+        </span>
+      </label>
       <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto]">
         <div className="relative">
           <input
@@ -136,8 +157,13 @@ function BidForm({ car }: { car: Car }) {
           <Gavel size={16} /> Lägg bud
         </Button>
       </div>
-      <p className="mt-2 text-xs text-graphite-400">
-        Bara ditt namn visas i budhistoriken. E-post och telefon använder vi för att kontakta dig om du vinner.
+      <p className="mt-3 text-xs text-graphite-400">
+        Bara ditt namn visas i budhistoriken. E-post och telefon använder vi för att kontakta dig om du vinner – läs
+        mer i vår{" "}
+        <Link to="/integritet" target="_blank" className="underline hover:text-graphite-600">
+          integritetspolicy
+        </Link>
+        .
       </p>
       {result && (
         <p className={`mt-3 text-sm font-semibold ${result.ok ? "text-blue-600" : "text-red-600"}`}>
@@ -145,6 +171,38 @@ function BidForm({ car }: { car: Car }) {
         </p>
       )}
     </form>
+  );
+}
+
+/** Frågor om bilen: ring eller chatta – nära budrutan. */
+function ContactBox({ car }: { car: Car }) {
+  const { data: settings } = useSettings();
+  const { openChat } = useChatPanel();
+  return (
+    <div className="mt-5 rounded-2xl border border-graphite-100 p-4">
+      <p className="text-sm font-bold text-graphite-900">Frågor om bilen?</p>
+      <p className="mt-0.5 text-sm text-graphite-500">Ring oss eller skriv i chatten – vi svarar snabbt.</p>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        {settings?.phone && (
+          <a
+            href={telHref(settings.phone)}
+            className="flex items-center justify-center gap-2 rounded-full bg-graphite-100 px-3 py-2.5 text-sm font-semibold text-graphite-900 transition-colors hover:bg-graphite-200"
+          >
+            <Phone size={16} /> Ring
+          </a>
+        )}
+        <button
+          type="button"
+          onClick={() => openChat({ carId: car.id, carTitle: carName(car) })}
+          className={cn(
+            "flex items-center justify-center gap-2 rounded-full bg-blue-500 px-3 py-2.5 text-sm font-semibold text-white transition-[background-color,transform] duration-150 hover:bg-blue-600 active:scale-[.98]",
+            !settings?.phone && "col-span-2",
+          )}
+        >
+          <MessageCircle size={16} /> Chatta med oss
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -294,6 +352,7 @@ export function CarDetailPage() {
                   <BidForm key={car.id} car={car} />
                 </div>
               )}
+              <ContactBox car={car} />
               <div className="mt-6 border-t border-graphite-100 pt-5">
                 <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-graphite-500">Budhistorik</h2>
                 <BidHistory car={car} />

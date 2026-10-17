@@ -4,8 +4,7 @@ import { Button } from "../components/Button";
 import { CarCard } from "../components/CarCard";
 import { CarIllustration } from "../components/CarIllustration";
 import { SectionTitle } from "../components/SectionTitle";
-import { Stars } from "../components/Stars";
-import { useCars, useReviews, useServices } from "../lib/queries";
+import { useCars, useServices } from "../lib/queries";
 
 const REASONS = [
   {
@@ -33,7 +32,6 @@ const REASONS = [
 export function HomePage() {
   const { data: services = [] } = useServices();
   const { data: cars = [] } = useCars();
-  const { data: reviews = [] } = useReviews();
 
   const popular = services.filter((s) => s.popular);
   const endingSoon = cars
@@ -48,13 +46,13 @@ export function HomePage() {
           <div>
             <p className="mb-3 text-sm font-bold uppercase tracking-widest text-blue-500">Bilverkstad i Sjödalen</p>
             <h1 className="font-display text-4xl font-extrabold uppercase leading-[1.05] tracking-tight text-graphite-900 sm:text-5xl">
-              Vi lagar din bil.
+              Service du kan lita på.
               <br />
-              Och säljer några till.
+              Bilar vi står för.
             </h1>
             <p className="mt-5 max-w-lg text-lg leading-relaxed text-graphite-600">
-              Sjödalen Bilar sköter service och reparationer på alla bilmärken – och lägger ut
-              verkstadsbesiktigade bilar vi själva köpt in på vår egen bilauktion.
+              Vi servar och reparerar alla bilmärken. Bilarna på vår auktion har vi köpt in
+              själva och gått igenom i egen verkstad innan de säljs.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Button to="/boka" size="lg">
@@ -148,21 +146,6 @@ export function HomePage() {
             <Link to="/auktion/salj" className="text-sm font-semibold text-graphite-300 hover:text-white">
               Vill du sälja din bil till oss? →
             </Link>
-          </div>
-        </div>
-      </section>
-
-      <section className="bg-graphite-50 px-4 py-16 sm:px-6">
-        <div className="mx-auto max-w-6xl">
-          <SectionTitle kicker="Omdömen" title="Vad kunderna säger" />
-          <div className="mt-8 grid gap-6 sm:grid-cols-3">
-            {reviews.slice(0, 3).map((r) => (
-              <div key={r.id} className="rounded-2xl bg-white p-6 shadow-card">
-                <Stars rating={r.rating} />
-                <p className="mt-3 text-graphite-700">"{r.text}"</p>
-                <p className="mt-4 text-sm font-bold text-graphite-900">{r.name}</p>
-              </div>
-            ))}
           </div>
         </div>
       </section>

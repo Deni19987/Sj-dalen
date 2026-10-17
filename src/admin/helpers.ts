@@ -96,3 +96,13 @@ export function downloadCsv(filename: string, rows: (string | number | null | un
 }
 
 export { telHref } from "../lib/format";
+
+/**
+ * Adress till en sida på den publika webbplatsen. När admin körs på en egen subdomän
+ * (admin.example.se) pekar länken till huvuddomänen, annars räcker sökvägen.
+ */
+export function siteUrl(path = "/") {
+  const { protocol, hostname, port } = window.location;
+  if (!hostname.startsWith("admin.")) return path;
+  return `${protocol}//${hostname.slice("admin.".length)}${port ? `:${port}` : ""}${path}`;
+}

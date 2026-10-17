@@ -2,6 +2,8 @@ import { useState, type FormEvent } from "react";
 import { CircleCheck, HandCoins } from "lucide-react";
 import { Button } from "../components/Button";
 import { PageHero } from "../components/PageHero";
+import { useChatPanel } from "../components/chat/ChatProvider";
+import { rememberChat, saveEmail } from "../lib/chat";
 import { useCreateSellRequest } from "../lib/queries";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -24,6 +26,7 @@ function Field({
 
 export function SellPage() {
   const send = useCreateSellRequest();
+  const { openChat } = useChatPanel();
   const [make, setMake] = useState("");
   const [model, setModel] = useState("");
   const [year, setYear] = useState("");
@@ -57,6 +60,12 @@ export function SellPage() {
       name: name.trim(),
       phone: phone.trim(),
       email: email.trim(),
+    }, {
+      onSuccess: ({ token }) => {
+        if (!token) return;
+        saveEmail(email.trim());
+        rememberChat({ token, carId: null, title: `Sälja ${make.trim()} ${model.trim()}` });
+      },
     });
   }
 
@@ -70,11 +79,15 @@ export function SellPage() {
           Tack!
         </h1>
         <p className="mt-3 text-graphite-600">
-          Vi går igenom uppgifterna och återkommer inom 24 timmar med ett bud på {make} {model}.
+          Vi går igenom uppgifterna och återkommer inom 24 timmar med ett bud på {make} {model} – i chatten
+          här på sajten och till {email.trim()}.
         </p>
-        <Button to="/auktion" className="mt-8" variant="outline">
-          Till bilauktionen
-        </Button>
+        <div className="mt-8 flex flex-wrap justify-center gap-3">
+          {send.data?.token && <Button onClick={() => openChat({ token: send.data.token })}>Öppna chatten</Button>}
+          <Button to="/auktion" variant="outline">
+            Till bilauktionen
+          </Button>
+        </div>
       </div>
     );
 

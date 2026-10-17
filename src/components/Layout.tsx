@@ -3,6 +3,7 @@ import { Megaphone } from "lucide-react";
 import { cn } from "../lib/cn";
 import { useSettings } from "../lib/queries";
 import { CarFlowPromo } from "./CarFlowPromo";
+import { ChatProvider } from "./chat/ChatProvider";
 import { Footer } from "./Footer";
 import { Header } from "./Header";
 
@@ -45,15 +46,16 @@ export function Layout() {
   if (path === "/admin" || path.startsWith("/admin/")) return <Outlet />;
 
   return (
-    <div className="flex min-h-screen flex-col bg-graphite-50 text-graphite-900">
-      <AnnouncementBar />
-      <Header />
-      <main className="flex-1">
-        <Outlet />
-      </main>
-      {path === "/" && <CarFlowPromo variant="home" />}
-      {path === "/tjanster" && <CarFlowPromo variant="tjanster" />}
-      <Footer />
-    </div>
+    <ChatProvider hideLauncher={path.startsWith("/chatt/")}>
+      <div className="flex min-h-screen flex-col bg-graphite-50 text-graphite-900">
+        <AnnouncementBar />
+        <Header />
+        <main className="flex-1">
+          <Outlet />
+        </main>
+        {path === "/tjanster" && <CarFlowPromo variant="tjanster" />}
+        <Footer />
+      </div>
+    </ChatProvider>
   );
 }

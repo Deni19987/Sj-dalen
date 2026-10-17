@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toBid, toCar } from "../lib/api";
 import { queryKeys } from "../lib/queries";
 import type { Car, CarStatus, Faq, Review, Service, SiteSettings } from "../lib/types";
+import { disablePushOnSignOut } from "./push";
 
 /* ------------------------------------------------------------------ */
 /* Inloggning                                                           */
@@ -54,7 +55,32 @@ export async function login(password: string, remember: boolean) {
   setSession(data);
 }
 
-export const logout = () => setSession(null);
+/** Loggar ut och stänger av pushnotiser på enheten (de slås på igen vid nästa inloggning). */
+export async function logout() {
+  await disablePushOnSignOut();
+  setSession(null);
+}
+
+/* ------------------------------------------------------------------ */
+/* Pushnotiser                                                          */
+/* ------------------------------------------------------------------ */
+
+export type PushTopic = "bids" | "reserve" | "ending" | "ended" | "followup" | "chat" | "sell" | "bookings";
+export interface PushState {
+  subscribed: boolean;
+  topics: PushTopic[];
+}
+
+export const pushApi = {
+  publicKey: () => request<{ publicKey: string }>("/push"),
+  status: (endpoint: string) => request<PushState>("/push/status", { method: "POST", body: { endpoint } }),
+  subscribe: (body: { endpoint: string; keys: { p256dh: string; auth: string }; userAgent: string; topics?: PushTopic[] }) =>
+    request<PushState>("/push/subscribe", { method: "POST", body }),
+  setTopics: (endpoint: string, topics: PushTopic[]) =>
+    request<PushState>("/push/topics", { method: "POST", body: { endpoint, topics } }),
+  unsubscribe: (endpoint: string) => request<PushState>("/push/unsubscribe", { method: "POST", body: { endpoint } }),
+  test: (endpoint: string) => request<{ ok: true }>("/push/test", { method: "POST", body: { endpoint } }),
+};
 
 /* ------------------------------------------------------------------ */
 /* Anrop                                                                */
@@ -119,6 +145,8 @@ export interface AdminCar extends Car {
   facts: CarFacts;
   createdAt: string;
   updatedAt: string;
+  /** Efter auktionen: när vinnaren kontaktades, betalade och hämtade bilen */
+  deal: { endedAt?: string; contactedAt?: string; paidAt?: string; pickedUpAt?: string };
 }
 
 /** Fälten som skickas när en bil sparas. */
@@ -259,6 +287,7 @@ const toAdminCar = (r: Row): AdminCar => ({
   reservePrice: r.reserve_price ?? undefined,
   adminNote: r.admin_note ?? "",
   regNumber: r.reg_number ?? "",
+  deal: r.deal ?? {},
   facts: { equipment: [], notes: "", ...(r.facts ?? {}) },
   equipment: r.facts?.equipment ?? [],
   engine: r.facts?.engine,
@@ -495,3 +524,86 @@ export const fetchImageMeta = (id: string) =>
   );
 
 export type { CarStatus };
+
+/* ------------------------------------------------------------------ */
+/* Chatt (Inkorg) – se server/chat.ts                                   */
+/* ------------------------------------------------------------------ */
+
+export interface Conversation {
+  id: string;
+  kind: "chat" | "contact" | "sell";
+  name: string;
+  email: string;
+  phone: string;
+  status: "open" | "archived";
+  details: { make?: string; model?: string; year?: number; mileageKm?: number };
+  createdAt: string;
+  lastMessageAt: string;
+  car: { id: string; title: string } | null;
+  lastBody: string;
+  lastSender: "customer" | "staff";
+  unread: number;
+  customerOnline: boolean;
+  customerTyping: boolean;
+  customerReadAt?: string | null;
+}
+
+export interface StaffChatMessage {
+  id: string;
+  sender: "customer" | "staff";
+  body: string;
+  created_at: string;
+  pending?: boolean;
+}
+
+/** Vad som hände med mejlet till kunden när personalen svarade */
+export type EmailOutcome = "sent" | "online" | "already" | "not_connected" | "failed";
+
+export const chatKeys = { list: (status: string) => ["admin", "chats", status] as const };
+
+export const useConversations = (status: "open" | "archived") =>
+  useQuery({
+    queryKey: chatKeys.list(status),
+    queryFn: () => request<{ conversations: Conversation[]; mailConnected: boolean }>(`/chats?status=${status}`),
+    refetchInterval: 5000,
+    refetchOnWindowFocus: true,
+  });
+
+export const chatAdminApi = {
+  thread: (id: string, after?: string | null) =>
+    request<{ conversation: Conversation; messages: StaffChatMessage[] }>(
+      `/chats/${id}${after ? `?after=${encodeURIComponent(after)}` : ""}`,
+    ),
+  send: (id: string, message: string) =>
+    request<{ message: StaffChatMessage; email: EmailOutcome }>(`/chats/${id}/messages`, { method: "POST", body: { message } }),
+  typing: (id: string) => request<{ ok: true }>(`/chats/${id}/typing`, { method: "POST" }),
+  setStatus: (id: string, status: "open" | "archived") => request<{ ok: true }>(`/chats/${id}`, { method: "PATCH", body: { status } }),
+};
+
+/* ------------------------------------------------------------------ */
+/* E-post (Anslut Gmail) – se server/mail.ts                            */
+/* ------------------------------------------------------------------ */
+
+export interface MailStatus {
+  configured: boolean;
+  connected: boolean;
+  email: string | null;
+  connectedAt: string | null;
+  redirectUri: string;
+}
+
+export const useMailStatus = () => useQuery({ queryKey: ["admin", "mail"], queryFn: () => request<MailStatus>("/mail") });
+
+export const mailApi = {
+  connect: () => request<{ url: string }>("/mail/connect", { method: "POST", body: {} }),
+  disconnect: () => request<{ ok: true }>("/mail/disconnect", { method: "POST", body: {} }),
+  test: () => request<{ ok: true; to: string }>("/mail/test", { method: "POST", body: {} }),
+};
+
+/** Efter auktionen: bocka i/ur Vinnaren kontaktad, Betald, Hämtad */
+export const useDealStep = () =>
+  useAdminMutation(
+    ({ id, step, done }: { id: string; step: "contactedAt" | "paidAt" | "pickedUpAt"; done: boolean }) =>
+      request(`/cars/${encodeURIComponent(id)}/actions`, { method: "POST", body: { action: "deal", step, done } }),
+    [adminKeys.cars],
+  );

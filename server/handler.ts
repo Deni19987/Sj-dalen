@@ -3,6 +3,11 @@
 
 import { ensureSchema, handleAdmin, serveImage } from "./admin";
 import type { AuthConfig } from "./auth";
+import { termsEffectiveDate } from "../src/lib/auction";
+import { onBidPlaced, topBid } from "./auction";
+import { handleChatPublic, startConversation } from "./chat";
+import { mailCallback, siteOrigin } from "./mail";
+import { sendPush } from "./push";
 import {
   body,
   dbError,
@@ -26,7 +31,18 @@ export interface HandlerOptions {
   env: Record<string, string | undefined>;
 }
 
+const short = (s: string, max = 120) => (s.length > max ? `${s.slice(0, max - 1).trimEnd()}…` : s);
+// "fre 17 okt kl. 09:00"
+function bookingTime(date: string, time: string) {
+  const d = new Date(`${date}T12:00:00Z`);
+  const day = d.toLocaleDateString("sv-SE", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+  return `${day.replace(/\./g, "")} kl. ${time}`;
+}
+
 export function createHandler(query: Query, options: HandlerOptions) {
+  const push = (...args: Parameters<typeof sendPush> extends [unknown, unknown, ...infer R] ? R : never) =>
+    sendPush(query, options.env, ...args);
+
   return async function handle(req: Request): Promise<Response> {
     const url = new URL(req.url);
     const path = url.pathname.replace(/^\/api/, "").replace(/\/+$/, "") || "/";
@@ -36,6 +52,11 @@ export function createHandler(query: Query, options: HandlerOptions) {
       if (path === "/admin" || path.startsWith("/admin/"))
         return await handleAdmin(req, path, { query, blobs: options.blobs, auth: options.auth, env: options.env });
       if (req.method === "GET" && path.startsWith("/images/")) return await serveImage(path, options.blobs);
+      if (path === "/chat" || path.startsWith("/chat/"))
+        return await handleChatPublic(req, path.split("/").filter(Boolean).slice(1).map(decodeURIComponent), query, options.env);
+      // Googles inloggning för "Anslut Gmail" kommer tillbaka hit (utan admin-token – state kontrolleras i stället).
+      if (req.method === "GET" && path === "/mail/callback")
+        return new Response(null, { status: 302, headers: { location: await mailCallback(query, options.env, req), ...NO_CACHE } });
 
       switch (route) {
         case "GET /services":
@@ -84,6 +105,10 @@ export function createHandler(query: Query, options: HandlerOptions) {
 
         case "POST /bids": {
           const b = await body(req);
+          if (b.acceptTerms !== true)
+            throw new HttpError(400, "Du behöver godkänna auktionsvillkoren för att lägga bud.");
+          await ensureSchema(query);
+          const prev = await topBid(query, String(b.carId));
           const rows = await query("select place_bid($1, $2, $3, $4, $5) as result", [
             str(b.carId, "bil", { max: 100 }),
             str(b.name, "namn", { max: 80 }),
@@ -91,7 +116,24 @@ export function createHandler(query: Query, options: HandlerOptions) {
             email(b.email),
             str(b.phone, "telefon", { min: 6, max: 40 }),
           ]);
-          return json(rows[0].result);
+          const result = rows[0].result;
+          // Vilken version av villkoren budgivaren godkände. Bud på samma bil har alltid olika belopp.
+          if (result?.ok) {
+            const settings = await query("select value from settings where key = 'site'");
+            await query("update bids set terms_version = $3 where car_id = $1 and amount = $2", [
+              b.carId,
+              b.amount,
+              termsEffectiveDate(settings[0]?.value?.auction),
+            ]);
+            await onBidPlaced(
+              query,
+              options.env,
+              siteOrigin(req),
+              { carId: b.carId, amount: b.amount, name: short(String(b.name).trim(), 60), email: String(b.email).trim(), extended: !!result.extended },
+              prev,
+            ).catch((err) => console.error("[auction] onBidPlaced", err));
+          }
+          return json(result);
         }
 
         case "POST /bookings": {
@@ -106,37 +148,47 @@ export function createHandler(query: Query, options: HandlerOptions) {
             str(b.regNumber, "registreringsnummer", { max: 10, optional: true }),
             str(b.notes, "övrigt", { max: 2000, optional: true }),
           ]).catch(dbError);
+          const service = (await query("select name from services where id = $1", [b.serviceId]))[0];
+          await push("bookings", {
+            title: `Ny bokning: ${service?.name ?? "verkstadstid"}`,
+            body: `${bookingTime(b.date, b.time)} – ${short(String(b.name), 60)}${b.regNumber ? `, ${String(b.regNumber).toUpperCase()}` : ""}`,
+            url: "/admin/bokningar",
+            tag: `booking-${rows[0].result?.id ?? Date.now()}`,
+          });
           return json(rows[0].result, 201);
         }
 
+        // "Sälj din bil" och kontaktformuläret startar en chatt, så att personalen svarar på allt i Inkorgen.
         case "POST /sell-requests": {
           const b = await body(req);
           const thisYear = new Date().getFullYear();
-          await query(
-            `insert into sell_requests (make, model, year, mileage_km, description, name, phone, email)
-             values ($1, $2, $3, $4, $5, $6, $7, $8)`,
-            [
-              str(b.make, "märke", { max: 60 }),
-              str(b.model, "modell", { max: 60 }),
-              int(b.year, "årsmodell", 1970, thisYear + 1),
-              int(b.mileageKm, "miltal", 0, 5_000_000),
-              str(b.description, "beskrivning", { max: 4000, optional: true }) ?? "",
-              str(b.name, "namn", { min: 2, max: 120 }),
-              str(b.phone, "telefon", { min: 6, max: 40 }),
-              email(b.email),
-            ],
-          );
-          return json({ ok: true }, 201);
+          const details = {
+            make: str(b.make, "märke", { max: 60 }),
+            model: str(b.model, "modell", { max: 60 }),
+            year: int(b.year, "årsmodell", 1970, thisYear + 1),
+            mileageKm: int(b.mileageKm, "miltal", 0, 5_000_000),
+          };
+          const description = str(b.description, "beskrivning", { max: 4000, optional: true }) ?? "";
+          const conv = await startConversation(query, options.env, {
+            kind: "sell",
+            name: str(b.name, "namn", { min: 2, max: 120 })!,
+            phone: str(b.phone, "telefon", { min: 6, max: 40 })!,
+            email: email(b.email),
+            details,
+            message: description || `Jag vill sälja min bil: ${details.make} ${details.model} ${details.year}, ${details.mileageKm.toLocaleString("sv-SE")} mil.`,
+          });
+          return json({ ok: true, token: conv.token }, 201);
         }
 
         case "POST /contact": {
           const b = await body(req);
-          await query("insert into contact_messages (name, email, message) values ($1, $2, $3)", [
-            str(b.name, "namn", { min: 2, max: 120 }),
-            email(b.email),
-            str(b.message, "meddelande", { min: 4, max: 5000 }),
-          ]);
-          return json({ ok: true }, 201);
+          const conv = await startConversation(query, options.env, {
+            kind: "contact",
+            name: str(b.name, "namn", { min: 2, max: 120 })!,
+            email: email(b.email),
+            message: str(b.message, "meddelande", { min: 4, max: 4000 })!,
+          });
+          return json({ ok: true, token: conv.token }, 201);
         }
 
         default:

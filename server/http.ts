@@ -113,3 +113,11 @@ export function dbError(err: unknown): never {
   if (e?.code === "23505") throw new HttpError(409, "Det finns redan en post med samma uppgifter.");
   throw err;
 }
+
+/**
+ * Kör flera SQL-satser i tur och ordning. Neon (HTTP) och PGlite tar bara en sats per anrop.
+ * Satserna avgränsas med ";" sist på raden (inga $$-block här).
+ */
+export async function runStatements(query: Query, sql: string) {
+  for (const stmt of sql.split(/;\s*\n/).map((s) => s.replace(/^\s*--.*$/gm, "").trim()).filter(Boolean)) await query(stmt);
+}

@@ -443,7 +443,7 @@ export const seedFaqs: Faq[] = [
     id: "f3",
     question: "Hur fungerar budgivningen?",
     answer:
-      "Varje bil har ett startpris och en nedräkning. Du lägger ett bud som är minst så högt som det angivna minsta nästa bud. Högsta bud när tiden går ut vinner. Vi kontaktar dig för betalning och avhämtning.",
+      "Varje bil har ett startpris och en nedräkning. Du lägger ett bud som är minst så högt som det angivna minsta nästa bud. Högsta bud när tiden går ut vinner. Budet är bindande och kan inte dras tillbaka – läs auktionsvillkoren innan du budar. Vi kontaktar dig för betalning och avhämtning.",
   },
   {
     id: "f4",

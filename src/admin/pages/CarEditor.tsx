@@ -6,12 +6,13 @@ import { cn } from "../../lib/cn";
 import type { BodyType, Car, CarStatus } from "../../lib/types";
 import { lookupVehicle, suggestStandardEquipment, useAdminCars, useDeleteBid, useSaveCar, writeAdWithAi, type AdminCar, type CarFacts, type CarInput, type VehicleData } from "../api";
 import { BlocketSheet } from "../BlocketSheet";
+import { DealCard } from "../DealCard";
 import { EquipmentPicker } from "../EquipmentPicker";
 import { BackLink } from "../../components/BackLink";
 import { MAKES } from "../../lib/vehicle";
 import { useCarActions } from "../CarActions";
 import { bidsNewestFirst } from "../../lib/auction";
-import { carState, endsInDays, fmtDateTime, kr, num, relativeTime, STATE_LABEL, telHref, toLocalInput } from "../helpers";
+import { carState, endsInDays, fmtDateTime, kr, num, relativeTime, siteUrl, STATE_LABEL, telHref, toLocalInput } from "../helpers";
 import { ImageManager } from "../ImageManager";
 import { ActionMenu, Btn, Card, EmptyState, Field, Input, LoadingBlock, Pill, Select, TextArea, Toggle, useFeedback, useRun } from "../ui";
 
@@ -572,7 +573,7 @@ function CarEditor({ car }: { car?: AdminCar }) {
           </div>
           {state && <Pill tone={STATE_LABEL[state].tone} className="hidden sm:inline-flex">{STATE_LABEL[state].label}</Pill>}
           {car && car.status !== "draft" && (
-            <a href={`/auktion/${car.id}`} target="_blank" rel="noopener" className="hidden h-8 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium text-ios-blue hover:bg-ios-blue/10 md:flex">
+            <a href={siteUrl(`/auktion/${car.id}`)} target="_blank" rel="noopener" className="hidden h-8 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium text-ios-blue hover:bg-ios-blue/10 md:flex">
               <ExternalLink size={14} /> Visa
             </a>
           )}
@@ -852,6 +853,7 @@ function CarEditor({ car }: { car?: AdminCar }) {
 
         {/* Sidokolumn */}
         <div className="space-y-6 lg:sticky lg:top-24 lg:self-start">
+          {car && <DealCard car={car} />}
           <Section title="Publicering">
             <Field label="Status">
               <Select value={form.status} onChange={(e) => set("status", e.target.value as CarStatus)}>

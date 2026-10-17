@@ -17,6 +17,8 @@ import { Logo } from "../components/Logo";
 import { DEMO } from "../lib/api";
 import { cn } from "../lib/cn";
 import { login, logout, useIsLoggedIn, useOverview } from "./api";
+import { siteUrl } from "./helpers";
+import { PushPrompt } from "./PushNotifications";
 import { Btn, FeedbackProvider, Sheet, Toggle } from "./ui";
 
 interface NavItem {
@@ -87,7 +89,7 @@ function Sidebar({ pathname }: { pathname: string }) {
       </nav>
       <div className="space-y-0.5 border-t border-black/[.06] pt-3">
         <a
-          href="/"
+          href={siteUrl()}
           target="_blank"
           rel="noopener"
           className="flex items-center gap-3 rounded-[10px] px-3 py-2 text-[15px] text-ios-label hover:bg-black/[.04]"
@@ -155,7 +157,7 @@ function TabBar({ pathname }: { pathname: string }) {
             ))}
           </div>
           <div className="mt-4 overflow-hidden rounded-[14px] bg-white">
-            <a href="/" target="_blank" rel="noopener" className="flex items-center gap-3 px-4 py-3 text-[17px] text-ios-blue">
+            <a href={siteUrl()} target="_blank" rel="noopener" className="flex items-center gap-3 px-4 py-3 text-[17px] text-ios-blue">
               <ExternalLink size={18} /> Visa webbplatsen
             </a>
             <button type="button" onClick={logout} className="flex w-full items-center gap-3 border-t border-black/[.06] px-4 py-3 text-[17px] text-ios-red">
@@ -226,7 +228,7 @@ function LoginScreen() {
             </Btn>
           </form>
         )}
-        <a href="/" className="mt-8 inline-block text-[14px] text-ios-blue hover:underline">
+        <a href={siteUrl()} className="mt-8 inline-block text-[14px] text-ios-blue hover:underline">
           ← Till webbplatsen
         </a>
       </div>
@@ -269,6 +271,7 @@ export function AdminLayout() {
             </div>
           </main>
           <TabBar pathname={pathname} />
+          <PushPrompt />
         </div>
       )}
     </FeedbackProvider>

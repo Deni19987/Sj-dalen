@@ -20,6 +20,28 @@
       rel="stylesheet"
     />
     <title>Sjödalen Bilar AB – Bilverkstad &amp; Bilauktion</title>
+    <script>
+      // Admin som app på hemskärmen: på admin.<domän> öppnas alltid admin, och adminsidorna får
+      // en egen appbeskrivning och ikon (så att "Lägg till på hemskärmen" startar admin, inte sajten).
+      (function () {
+        var adminHost = /^admin\./.test(location.hostname);
+        var adminPath = /^\/admin(\/|$)/.test(location.pathname);
+        if (adminHost && !adminPath) return location.replace("/admin");
+        if (!adminHost && !adminPath) return;
+        var head = document.head;
+        function add(tag, attrs) {
+          var el = document.createElement(tag);
+          for (var k in attrs) el.setAttribute(k, attrs[k]);
+          head.appendChild(el);
+        }
+        add("link", { rel: "manifest", href: "/admin.webmanifest" });
+        add("link", { rel: "apple-touch-icon", href: "/admin-apple-touch-icon.png" });
+        add("meta", { name: "apple-mobile-web-app-capable", content: "yes" });
+        add("meta", { name: "mobile-web-app-capable", content: "yes" });
+        add("meta", { name: "apple-mobile-web-app-title", content: "Sjödalen Admin" });
+        add("meta", { name: "apple-mobile-web-app-status-bar-style", content: "default" });
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -2,6 +2,8 @@ import { useState, type FormEvent } from "react";
 import { CircleCheck, Clock, Mail, MapPin, Phone } from "lucide-react";
 import { Button } from "../components/Button";
 import { PageHero } from "../components/PageHero";
+import { useChatPanel } from "../components/chat/ChatProvider";
+import { rememberChat, saveEmail } from "../lib/chat";
 import { telHref } from "../lib/format";
 import { useCreateContactMessage, useSettings } from "../lib/queries";
 
@@ -14,13 +16,23 @@ export function ContactPage() {
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
   const send = useCreateContactMessage();
+  const { openChat } = useChatPanel();
   const { data: settings } = useSettings();
   const valid = name.trim().length > 1 && EMAIL_RE.test(email) && message.trim().length > 3;
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (!valid || send.isPending) return;
-    send.mutate({ name: name.trim(), email: email.trim(), message: message.trim() });
+    send.mutate(
+      { name: name.trim(), email: email.trim(), message: message.trim() },
+      {
+        onSuccess: ({ token }) => {
+          if (!token) return;
+          saveEmail(email.trim());
+          rememberChat({ token, carId: null, title: "Chatt med verkstaden" });
+        },
+      },
+    );
   }
 
   return (
@@ -82,18 +94,26 @@ export function ContactPage() {
               <h2 className="mt-5 font-display text-xl font-extrabold uppercase tracking-tight text-graphite-900">
                 Tack för ditt meddelande!
               </h2>
-              <p className="mt-2 text-graphite-600">Vi hör av oss till dig så snart vi kan.</p>
-              <Button
-                className="mt-6"
-                onClick={() => {
-                  send.reset();
-                  setName("");
-                  setEmail("");
-                  setMessage("");
-                }}
-              >
-                Skicka ett till meddelande
-              </Button>
+              <p className="mt-2 max-w-sm text-graphite-600">
+                Vi svarar i chatten här på sajten. Lämnar du sidan skickar vi svaret till {email.trim()}.
+              </p>
+              {send.data?.token ? (
+                <Button className="mt-6" onClick={() => openChat({ token: send.data.token })}>
+                  Fortsätt i chatten
+                </Button>
+              ) : (
+                <Button
+                  className="mt-6"
+                  onClick={() => {
+                    send.reset();
+                    setName("");
+                    setEmail("");
+                    setMessage("");
+                  }}
+                >
+                  Skicka ett till meddelande
+                </Button>
+              )}
             </div>
           ) : (
             <form onSubmit={onSubmit} className="rounded-2xl bg-white p-6 shadow-card sm:p-8">

@@ -52,3 +52,14 @@
 .cf-badge{font-size:.55rem;font-weight:700;background:#fef6e7;color:#b8790a;border:1px solid #f3dfae;padding:.1rem .4rem;border-radius:9999px;white-space:nowrap}
 .cf-titem.dim .cf-ttitle,.cf-titem.dim .cf-tdesc{color:#c3cad3}
 @media (max-width: 640px){.cf-promo-inner{flex-direction:column;text-align:left}}
+
+/* Respektera "minska rörelse": hoppa över animationen, inte funktionen. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

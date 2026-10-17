@@ -69,6 +69,13 @@ export default {
         },
         "ios-pop": { "0%": { transform: "scale(.9)", opacity: "0" }, "100%": { transform: "none", opacity: "1" } },
         "ios-pulse": { "0%,100%": { opacity: "1" }, "50%": { opacity: ".4" } },
+        // Chatten växer fram ur knappen nere till höger och viker ihop sig dit igen.
+        "chat-open": {
+          from: { opacity: "0", transform: "translateY(12px) scale(.92)" },
+          to: { opacity: "1", transform: "none" },
+        },
+        "msg-in": { from: { opacity: "0", transform: "translateY(8px) scale(.98)" }, to: { opacity: "1", transform: "none" } },
+        "typing-dot": { "0%,60%,100%": { transform: "translateY(0)", opacity: ".45" }, "30%": { transform: "translateY(-3px)", opacity: "1" } },
         "ios-shake": {
           "0%,100%": { transform: "none" },
           "20%,60%": { transform: "translateX(-8px)" },
@@ -83,6 +90,9 @@ export default {
         "ios-pop": "ios-pop .3s cubic-bezier(.32,.72,0,1) both",
         "ios-pulse": "ios-pulse 1.6s ease-in-out infinite",
         "ios-shake": "ios-shake .4s ease-in-out",
+        "chat-open": "chat-open .36s cubic-bezier(.32,.72,0,1) both",
+        "msg-in": "msg-in .28s cubic-bezier(.32,.72,0,1) both",
+        "typing-dot": "typing-dot 1.2s ease-in-out infinite",
       },
       boxShadow: {
         "ios-card": "0 1px 2px rgba(0,0,0,.04), 0 4px 16px -4px rgba(0,0,0,.06)",

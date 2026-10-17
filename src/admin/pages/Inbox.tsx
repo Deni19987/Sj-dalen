@@ -1,258 +1,420 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
-import { Archive, ArchiveRestore, Car, ChevronLeft, Inbox as InboxIcon, Mail, MailOpen, MessageSquare, Phone, Reply, Tag, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { Link, useNavigate, useParams } from "@tanstack/react-router";
+import { Archive, ArchiveRestore, ArrowUp, Car, ChevronLeft, ExternalLink, HandCoins, Inbox as InboxIcon, Mail, MailWarning, Phone } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "../../lib/cn";
-import { useDeleteMessage, useMessages, useUpdateMessage, type InboxItem } from "../api";
-import { fmtLongDate, mailTime, num, telHref } from "../helpers";
-import { Btn, Card, EmptyState, ErrorBlock, LoadingBlock, PageHeader, SearchField, Segmented, TextArea, useFeedback, useRun } from "../ui";
-import { PREFILL_KEY } from "./CarEditor";
+import { useSettings } from "../../lib/queries";
+import { adminKeys, chatAdminApi, chatKeys, useConversations, type Conversation, type EmailOutcome, type StaffChatMessage } from "../api";
+import { siteUrl, telHref } from "../helpers";
+import { EmptyState, ErrorBlock, LoadingBlock, PageHeader, Segmented, useRun } from "../ui";
 
-type Folder = "inbox" | "unread" | "sell" | "archived";
+const timeShort = (iso: string) => {
+  const d = new Date(iso);
+  const today = new Date().toDateString() === d.toDateString();
+  return today
+    ? d.toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" })
+    : d.toLocaleDateString("sv-SE", { day: "numeric", month: "short" });
+};
+const clock = (iso: string) => new Date(iso).toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" });
+const who = (c: Conversation) => c.name || c.email;
+const KIND_LABEL: Record<Conversation["kind"], string | null> = { chat: null, contact: "Kontaktformulär", sell: "Vill sälja bil" };
 
-const subjectOf = (m: InboxItem) => (m.kind === "sell" ? `Vill sälja: ${m.make} ${m.model} ${m.year}` : "Meddelande via kontaktformuläret");
-const previewOf = (m: InboxItem) => (m.kind === "sell" ? m.description || `${num(m.mileageKm)} km` : m.message);
+function Initial({ c, size = "md" }: { c: Conversation; size?: "md" | "lg" }) {
+  return (
+    <span
+      className={cn(
+        "relative flex shrink-0 items-center justify-center rounded-full font-semibold text-white",
+        c.kind === "sell" ? "bg-ios-orange" : "bg-ios-blue",
+        size === "lg" ? "h-10 w-10 text-[16px]" : "h-11 w-11 text-[17px]",
+      )}
+    >
+      {who(c).trim().charAt(0).toUpperCase()}
+      {c.customerOnline && <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-white bg-ios-green" />}
+    </span>
+  );
+}
 
-export function InboxPage() {
-  const { data, isLoading, error, refetch } = useMessages();
-  const [folder, setFolder] = useState<Folder>("inbox");
-  const [q, setQ] = useState("");
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const update = useUpdateMessage();
+/* ------------------------------------------------------------------ */
+/* Listan                                                               */
+/* ------------------------------------------------------------------ */
 
-  const counts = useMemo(() => {
-    const all = data ?? [];
-    return {
-      inbox: all.filter((m) => m.status !== "archived").length,
-      unread: all.filter((m) => m.status === "new").length,
-      sell: all.filter((m) => m.kind === "sell" && m.status !== "archived").length,
-    };
-  }, [data]);
+function ConversationList({ items, activeId }: { items: Conversation[]; activeId?: string }) {
+  return (
+    <ul className="divide-y divide-black/[.06] overflow-hidden rounded-[14px] bg-white shadow-ios-card">
+      {items.map((c) => (
+        <li key={c.id}>
+          <Link
+            to="/admin/inkorg/$id"
+            params={{ id: c.id }}
+            className={cn("flex items-center gap-3 px-4 py-3 transition-colors active:bg-ios-fill2", activeId === c.id ? "bg-ios-blue/[.07]" : "hover:bg-black/[.02]")}
+          >
+            <Initial c={c} />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline justify-between gap-2">
+                <p className={cn("truncate text-[15px]", c.unread ? "font-semibold" : "font-medium")}>{who(c)}</p>
+                <span className={cn("shrink-0 text-[12px]", c.unread ? "font-semibold text-ios-blue" : "text-ios-tertiary")}>{timeShort(c.lastMessageAt)}</span>
+              </div>
+              {(c.car || KIND_LABEL[c.kind]) && (
+                <p className="truncate text-[12px] font-medium text-ios-secondary">{c.car?.title ?? KIND_LABEL[c.kind]}</p>
+              )}
+              <div className="flex items-center gap-2">
+                <p className={cn("line-clamp-1 flex-1 text-[14px]", c.unread ? "text-ios-label" : "text-ios-secondary")}>
+                  {c.customerTyping ? <span className="italic text-ios-blue">skriver…</span> : <>{c.lastSender === "staff" && "Du: "}{c.lastBody}</>}
+                </p>
+                {c.unread > 0 && (
+                  <span className="min-w-[20px] rounded-full bg-ios-blue px-1.5 text-center text-[11px] font-semibold leading-5 text-white">{c.unread}</span>
+                )}
+              </div>
+            </div>
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
-  const list = useMemo(() => {
-    const term = q.trim().toLowerCase();
-    return (data ?? [])
-      .filter((m) =>
-        folder === "archived" ? m.status === "archived" : folder === "unread" ? m.status === "new" : folder === "sell" ? m.kind === "sell" && m.status !== "archived" : m.status !== "archived",
-      )
-      .filter((m) => !term || `${m.name} ${m.email} ${previewOf(m)} ${subjectOf(m)}`.toLowerCase().includes(term));
-  }, [data, folder, q]);
+/* ------------------------------------------------------------------ */
+/* En konversation                                                      */
+/* ------------------------------------------------------------------ */
 
-  const keyOf = (m: InboxItem) => `${m.kind}:${m.id}`;
-  const selected = (data ?? []).find((m) => keyOf(m) === selectedKey) ?? null;
+const EMAIL_NOTE: Record<EmailOutcome, { text: string; warn?: boolean } | null> = {
+  sent: { text: "Kunden har fått ett mejl om svaret" },
+  online: null,
+  already: { text: "Kunden har redan fått ett mejl – nästa skickas när kunden varit tillbaka i chatten" },
+  not_connected: { text: "E-post är inte ansluten – kunden får inget mejl. Anslut Gmail under Inställningar.", warn: true },
+  failed: { text: "Mejlet till kunden kunde inte skickas. Kontrollera e-posten under Inställningar.", warn: true },
+};
 
-  // Markera som läst när meddelandet öppnas
+function useThread(id: string) {
+  const [conv, setConv] = useState<Conversation | null>(null);
+  const [messages, setMessages] = useState<StaffChatMessage[]>([]);
+  const [error, setError] = useState<unknown>(null);
+  const last = useRef<string | null>(null);
+  const qc = useQueryClient();
+
   useEffect(() => {
-    if (selected?.status === "new") update.mutate({ kind: selected.kind, id: selected.id, status: "read" });
-  }, [selected?.id, selected?.kind]);
+    let stop = false;
+    let timer: ReturnType<typeof setTimeout>;
+    setConv(null);
+    setMessages([]);
+    last.current = null;
+    let first = true;
+    const tick = async () => {
+      try {
+        const r = await chatAdminApi.thread(id, last.current);
+        if (stop) return;
+        setConv(r.conversation);
+        if (r.messages.length) {
+          setMessages((prev) => {
+            const ids = new Set(prev.map((m) => m.id));
+            const fresh = r.messages.filter((m) => !ids.has(m.id));
+            return [...prev.filter((m) => !(m.pending && fresh.some((f) => f.body === m.body && f.sender === "staff"))), ...fresh];
+          });
+          last.current = r.messages[r.messages.length - 1].created_at;
+        }
+        // Läst: uppdatera listan och menyns siffra direkt
+        if (first) {
+          first = false;
+          qc.invalidateQueries({ queryKey: chatKeys.list("open") });
+          qc.invalidateQueries({ queryKey: adminKeys.overview });
+        }
+        setError(null);
+      } catch (e) {
+        if (!stop) setError(e);
+      }
+      if (!stop) timer = setTimeout(tick, document.visibilityState === "visible" ? 2500 : 10_000);
+    };
+    tick();
+    return () => {
+      stop = true;
+      clearTimeout(timer);
+    };
+  }, [id, qc]);
+
+  const send = useCallback(
+    async (text: string) => {
+      const temp: StaffChatMessage = { id: `tmp-${Date.now()}`, sender: "staff", body: text, created_at: new Date().toISOString(), pending: true };
+      setMessages((m) => [...m, temp]);
+      try {
+        const r = await chatAdminApi.send(id, text);
+        setMessages((m) => (m.some((x) => x.id === r.message.id) ? m.filter((x) => x.id !== temp.id) : m.map((x) => (x.id === temp.id ? r.message : x))));
+        last.current = r.message.created_at;
+        qc.invalidateQueries({ queryKey: chatKeys.list("open") });
+        return r.email;
+      } catch (e) {
+        setMessages((m) => m.filter((x) => x.id !== temp.id));
+        throw e;
+      }
+    },
+    [id, qc],
+  );
+
+  return { conv, messages, error, send };
+}
+
+function Thread({ id, onBack }: { id: string; onBack: () => void }) {
+  const { conv, messages, error, send } = useThread(id);
+  const { data: settings } = useSettings();
+  const [text, setText] = useState("");
+  const [note, setNote] = useState<{ text: string; warn?: boolean } | null>(null);
+  const lastTyping = useRef(0);
+  const list = useRef<HTMLDivElement>(null);
+  const input = useRef<HTMLTextAreaElement>(null);
+  const run = useRun();
+  const qc = useQueryClient();
+  const quick = settings?.chat.quickReplies ?? [];
+
+  useLayoutEffect(() => {
+    const el = list.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: messages.length > 1 ? "smooth" : "auto" });
+  }, [messages.length, conv?.customerTyping]);
+
+  async function submit(e?: FormEvent) {
+    e?.preventDefault();
+    const t = text.trim();
+    if (!t) return;
+    setText("");
+    try {
+      const outcome = await send(t);
+      setNote(EMAIL_NOTE[outcome]);
+    } catch (err) {
+      setText(t);
+      setNote({ text: err instanceof Error ? err.message : "Kunde inte skicka.", warn: true });
+    }
+  }
+
+  function onKey(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && window.matchMedia("(pointer: fine)").matches) {
+      e.preventDefault();
+      submit();
+    }
+  }
+
+  async function toggleArchive() {
+    if (!conv) return;
+    const next = conv.status === "open" ? "archived" : "open";
+    const ok = await run(() => chatAdminApi.setStatus(conv.id, next), next === "archived" ? "Chatten är arkiverad" : "Chatten är flyttad till Aktiva");
+    if (ok) {
+      qc.invalidateQueries({ queryKey: ["admin", "chats"] });
+      if (next === "archived") onBack();
+    }
+  }
+
+  const lastStaff = [...messages].reverse().find((m) => m.sender === "staff" && !m.pending);
+  const seenId = lastStaff && conv?.customerReadAt && new Date(conv.customerReadAt) >= new Date(lastStaff.created_at) ? lastStaff.id : null;
 
   return (
-    <div>
-      <div className={cn(selected && "hidden lg:block")}>
-        <PageHeader title="Inkorg" subtitle={counts.unread ? `${counts.unread} olästa` : "Allt är läst"} />
-      </div>
-
-      {error && <ErrorBlock error={error} retry={() => refetch()} />}
-      {isLoading && <LoadingBlock />}
-
-      {data && (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[380px_minmax(0,1fr)]">
-          {/* Lista */}
-          <div className={cn("min-w-0", selected && "hidden lg:block")}>
-            <div className="mb-3 space-y-2">
-              <Segmented
-                value={folder}
-                onChange={(f) => {
-                  setFolder(f);
-                  setSelectedKey(null);
-                }}
-                options={[
-                  { value: "inbox", label: "Inkorg" },
-                  { value: "unread", label: "Olästa", count: counts.unread },
-                  { value: "sell", label: "Sälj bil", count: counts.sell },
-                  { value: "archived", label: "Arkiv" },
-                ]}
-              />
-              <SearchField value={q} onChange={setQ} placeholder="Sök i meddelanden" />
+    <div className="fixed inset-0 z-50 flex animate-ios-sheet flex-col bg-ios-bg lg:static lg:z-auto lg:h-[calc(100dvh-260px)] lg:min-h-[480px] lg:overflow-hidden lg:rounded-[18px] lg:bg-white lg:shadow-ios-card">
+      {/* Huvud */}
+      <header className="flex items-center gap-3 border-b border-black/[.06] bg-white/85 px-3 pb-2.5 pt-[max(10px,env(safe-area-inset-top))] backdrop-blur-xl lg:px-5">
+        <button type="button" onClick={onBack} aria-label="Tillbaka till inkorgen" className="flex h-9 items-center gap-0.5 pr-1 text-[17px] text-ios-blue lg:hidden">
+          <ChevronLeft size={24} /> Inkorg
+        </button>
+        {conv && (
+          <>
+            <Initial c={conv} size="lg" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[15px] font-semibold">{who(conv)}</p>
+              <p className={cn("truncate text-[12px]", conv.customerOnline ? "text-ios-green" : "text-ios-secondary")}>
+                {conv.customerTyping ? "skriver…" : conv.customerOnline ? "Online nu" : conv.email}
+              </p>
             </div>
-            <Card padded={false} className="overflow-hidden">
-              {list.length === 0 ? (
-                <EmptyState icon={<InboxIcon size={26} />} title={folder === "archived" ? "Arkivet är tomt" : "Inga meddelanden"} text={q ? "Inga träffar på sökningen." : undefined} />
-              ) : (
-                <ul className="max-h-[calc(100dvh-260px)] divide-y divide-black/[.05] overflow-y-auto">
-                  {list.map((m) => {
-                    const active = selectedKey === keyOf(m);
-                    return (
-                      <li key={keyOf(m)}>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedKey(keyOf(m))}
-                          className={cn("flex w-full gap-3 px-4 py-3 text-left transition", active ? "bg-ios-blue text-white" : "hover:bg-ios-fill2")}
-                        >
-                          <span className="mt-1.5 w-2 shrink-0">{m.status === "new" && <span className={cn("block h-2 w-2 rounded-full", active ? "bg-white" : "bg-ios-blue")} />}</span>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-baseline justify-between gap-2">
-                              <p className={cn("truncate text-[15px]", m.status === "new" ? "font-semibold" : "font-medium")}>{m.name}</p>
-                              <span className={cn("shrink-0 text-[12px]", active ? "text-white/80" : "text-ios-tertiary")}>{mailTime(m.createdAt)}</span>
-                            </div>
-                            <p className={cn("flex items-center gap-1 truncate text-[13px]", active ? "text-white" : "text-ios-label")}>
-                              {m.kind === "sell" ? <Tag size={12} className="shrink-0" /> : <MessageSquare size={12} className="shrink-0" />}
-                              {subjectOf(m)}
-                            </p>
-                            <p className={cn("line-clamp-2 text-[13px] leading-snug", active ? "text-white/80" : "text-ios-secondary")}>{previewOf(m)}</p>
-                          </div>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </Card>
-          </div>
+            <button
+              type="button"
+              onClick={toggleArchive}
+              aria-label={conv.status === "open" ? "Arkivera" : "Flytta till Aktiva"}
+              title={conv.status === "open" ? "Arkivera" : "Flytta till Aktiva"}
+              className="flex h-9 w-9 items-center justify-center rounded-full text-ios-blue hover:bg-ios-blue/10"
+            >
+              {conv.status === "open" ? <Archive size={19} /> : <ArchiveRestore size={19} />}
+            </button>
+          </>
+        )}
+      </header>
 
-          {/* Detalj */}
-          <div className={cn("min-w-0", !selected && "hidden lg:block")}>
-            {selected ? (
-              <MessageDetail key={keyOf(selected)} m={selected} onBack={() => setSelectedKey(null)} onGone={() => setSelectedKey(null)} />
-            ) : (
-              <Card className="flex min-h-[400px] items-center justify-center">
-                <EmptyState icon={<Mail size={26} />} title="Inget meddelande valt" />
-              </Card>
-            )}
-          </div>
+      {/* Om kunden / bilen */}
+      {conv && (conv.car || conv.kind === "sell" || conv.phone) && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-black/[.06] bg-white px-4 py-2 text-[13px] lg:px-5">
+          {conv.car && (
+            <a href={siteUrl(`/auktion/${conv.car.id}`)} target="_blank" rel="noopener" className="flex items-center gap-1.5 rounded-full bg-ios-fill2 px-3 py-1 font-medium text-ios-label">
+              <Car size={14} className="text-ios-blue" /> {conv.car.title} <ExternalLink size={12} className="text-ios-tertiary" />
+            </a>
+          )}
+          {conv.kind === "sell" && conv.details.make && (
+            <span className="flex items-center gap-1.5 rounded-full bg-ios-orange/10 px-3 py-1 font-medium text-ios-label">
+              <HandCoins size={14} className="text-ios-orange" /> {conv.details.make} {conv.details.model} {conv.details.year}
+              {conv.details.mileageKm != null && ` · ${conv.details.mileageKm.toLocaleString("sv-SE")} mil`}
+            </span>
+          )}
+          {conv.phone && (
+            <a href={telHref(conv.phone)} className="flex items-center gap-1.5 rounded-full bg-ios-fill2 px-3 py-1 font-medium text-ios-blue">
+              <Phone size={14} /> {conv.phone}
+            </a>
+          )}
+          <a href={`mailto:${conv.email}`} className="flex items-center gap-1.5 rounded-full bg-ios-fill2 px-3 py-1 font-medium text-ios-blue">
+            <Mail size={14} /> E-post
+          </a>
         </div>
       )}
+
+      {/* Meddelanden */}
+      <div ref={list} className="flex-1 space-y-1.5 overflow-y-auto overscroll-contain px-3 py-4 lg:px-5">
+        {!conv && !error && <LoadingBlock />}
+        {error != null && !conv && <ErrorBlock error={error} />}
+        {messages.map((m, i) => {
+          const mine = m.sender === "staff";
+          const gap = i > 0 && new Date(m.created_at).getTime() - new Date(messages[i - 1].created_at).getTime() > 30 * 60_000;
+          return (
+            <div key={m.id}>
+              {(i === 0 || gap) && (
+                <p className="py-2 text-center text-[11px] font-medium text-ios-tertiary">
+                  {new Date(m.created_at).toLocaleString("sv-SE", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                </p>
+              )}
+              <div className={cn("flex animate-ios-fade flex-col", mine ? "items-end" : "items-start")}>
+                <div
+                  className={cn(
+                    "max-w-[80%] whitespace-pre-wrap break-words rounded-[18px] px-3.5 py-2 text-[15px] leading-snug",
+                    mine ? "rounded-br-md bg-ios-blue text-white" : "rounded-bl-md bg-white text-ios-label shadow-[0_0_0_.5px_rgba(0,0,0,.06)] lg:bg-ios-fill2 lg:shadow-none",
+                    m.pending && "opacity-60",
+                  )}
+                >
+                  {m.body}
+                </div>
+                <span className="mt-0.5 px-1 text-[11px] text-ios-tertiary">
+                  {m.pending ? "Skickar…" : clock(m.created_at)}
+                  {m.id === seenId && " · Läst"}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+        {conv?.customerTyping && (
+          <div className="flex animate-ios-fade">
+            <span className="flex items-center gap-1 rounded-[18px] rounded-bl-md bg-white px-3.5 py-3 lg:bg-ios-fill2">
+              {[0, 1, 2].map((i) => (
+                <span key={i} className="h-1.5 w-1.5 animate-typing-dot rounded-full bg-ios-tertiary" style={{ animationDelay: `${i * 0.16}s` }} />
+              ))}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Skriv */}
+      <form onSubmit={submit} className="border-t border-black/[.06] bg-white/85 px-3 pb-[max(10px,env(safe-area-inset-bottom))] pt-2 backdrop-blur-xl lg:px-4">
+        {note && (
+          <p className={cn("mb-1.5 flex items-center gap-1.5 px-1 text-[12px]", note.warn ? "text-ios-orange" : "text-ios-secondary")}>
+            {note.warn ? <MailWarning size={14} className="shrink-0" /> : <Mail size={14} className="shrink-0" />} {note.text}
+          </p>
+        )}
+        {quick.length > 0 && !text && (
+          <div className="-mx-3 mb-2 flex gap-1.5 overflow-x-auto px-3 pb-0.5 [scrollbar-width:none]">
+            {quick.map((q) => (
+              <button
+                key={q}
+                type="button"
+                onClick={() => {
+                  setText(q);
+                  input.current?.focus();
+                }}
+                className="max-w-[260px] shrink-0 truncate rounded-full border border-ios-blue/25 px-3 py-1.5 text-[13px] text-ios-blue transition-colors hover:bg-ios-blue/10"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="flex items-end gap-2 rounded-[22px] border border-black/[.1] bg-white py-1 pl-4 pr-1">
+          <textarea
+            ref={input}
+            value={text}
+            onChange={(e) => {
+              setText(e.target.value);
+              if (Date.now() - lastTyping.current > 3000) {
+                lastTyping.current = Date.now();
+                chatAdminApi.typing(id).catch(() => {});
+              }
+            }}
+            onKeyDown={onKey}
+            rows={1}
+            maxLength={2000}
+            placeholder={conv ? `Svara ${conv.name ? conv.name.split(" ")[0] : "kunden"}` : "Svara"}
+            aria-label="Svar"
+            className="max-h-36 min-h-[36px] flex-1 resize-none bg-transparent py-2 text-[16px] leading-snug outline-none [field-sizing:content]"
+          />
+          <button
+            type="submit"
+            disabled={!text.trim()}
+            aria-label="Skicka"
+            className="mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ios-blue text-white transition-[transform,opacity] duration-150 active:scale-90 disabled:opacity-30"
+          >
+            <ArrowUp size={18} strokeWidth={2.5} />
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
 
-function MessageDetail({ m, onBack, onGone }: { m: InboxItem; onBack: () => void; onGone: () => void }) {
-  const update = useUpdateMessage();
-  const del = useDeleteMessage();
-  const run = useRun();
-  const { confirm, toast } = useFeedback();
+/* ------------------------------------------------------------------ */
+/* Sidan                                                                */
+/* ------------------------------------------------------------------ */
+
+export function InboxPage() {
+  const { id } = useParams({ strict: false }) as { id?: string };
   const navigate = useNavigate();
-  const [note, setNote] = useState(m.note);
-
-  const subject = m.kind === "sell" ? `Din ${m.make} ${m.model}` : "Ditt meddelande till Sjödalen Bilar";
-  const quoted = (m.kind === "sell" ? m.description : m.message)
-    .split("\n")
-    .map((l) => `> ${l}`)
-    .join("\n");
-  const mailto = `mailto:${m.email}?subject=${encodeURIComponent(`Sv: ${subject}`)}&body=${encodeURIComponent(`Hej ${m.name.split(" ")[0]}!\n\n\n\nMed vänliga hälsningar\nSjödalen Bilar\n\n${quoted}`)}`;
-
-  async function archive() {
-    const status = m.status === "archived" ? "read" : "archived";
-    const ok = await run(() => update.mutateAsync({ kind: m.kind, id: m.id, status }));
-    if (ok !== undefined) {
-      toast(status === "archived" ? "Flyttat till arkivet" : "Flyttat till inkorgen", "success", {
-        label: "Ångra",
-        onClick: () => update.mutate({ kind: m.kind, id: m.id, status: m.status }),
-      });
-      onGone();
-    }
-  }
-
-  async function remove() {
-    const ok = await confirm({ title: "Ta bort meddelandet?", message: "Det går inte att ångra.", confirmLabel: "Ta bort", destructive: true });
-    if (ok && (await run(() => del.mutateAsync({ kind: m.kind, id: m.id }), "Meddelandet är borttaget")) !== undefined) onGone();
-  }
-
-  function createListing() {
-    if (m.kind !== "sell") return;
-    try {
-      sessionStorage.setItem(
-        PREFILL_KEY,
-        JSON.stringify({ make: m.make, model: m.model, year: String(m.year), mileageKm: String(m.mileageKm), adminNote: `Inköpt från ${m.name}, ${m.phone}, ${m.email}` }),
-      );
-    } catch {
-      /* förifyllning är en bekvämlighet */
-    }
-    navigate({ to: "/admin/bilar/ny" });
-  }
+  const [status, setStatus] = useState<"open" | "archived">("open");
+  const { data, isLoading, error, refetch } = useConversations(status);
+  const items = data?.conversations ?? [];
+  const unread = items.filter((c) => c.unread > 0).length;
+  const back = () => navigate({ to: "/admin/inkorg" });
 
   return (
-    <Card padded={false} className="animate-ios-fade overflow-hidden">
-      {/* Verktygsrad */}
-      <div className="flex items-center gap-1 border-b border-black/[.06] px-3 py-2">
-        <button type="button" onClick={onBack} className="flex items-center text-[17px] text-ios-blue lg:hidden">
-          <ChevronLeft size={22} /> Inkorg
-        </button>
-        <div className="ml-auto flex items-center gap-1">
-          <Btn size="icon" variant="plain" aria-label={m.status === "new" ? "Markera som läst" : "Markera som oläst"} title={m.status === "new" ? "Markera som läst" : "Markera som oläst"} onClick={() => update.mutate({ kind: m.kind, id: m.id, status: m.status === "new" ? "read" : "new" })}>
-            {m.status === "new" ? <MailOpen size={18} /> : <Mail size={18} />}
-          </Btn>
-          <Btn size="icon" variant="plain" aria-label={m.status === "archived" ? "Flytta till inkorgen" : "Arkivera"} title={m.status === "archived" ? "Flytta till inkorgen" : "Arkivera"} onClick={archive}>
-            {m.status === "archived" ? <ArchiveRestore size={18} /> : <Archive size={18} />}
-          </Btn>
-          <Btn size="icon" variant="plain" aria-label="Ta bort" title="Ta bort" onClick={remove} className="text-ios-red hover:bg-ios-red/10">
-            <Trash2 size={18} />
-          </Btn>
-        </div>
-      </div>
-
-      <div className="space-y-6 p-5 sm:p-7">
-        <div className="flex items-start gap-3">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-b from-[#a1a1a6] to-[#7c7c80] text-[17px] font-semibold text-white">{m.name.charAt(0).toUpperCase()}</span>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-              <p className="text-[17px] font-semibold">{m.name}</p>
-              <p className="text-[13px] text-ios-tertiary">
-                {fmtLongDate(m.createdAt)} {new Date(m.createdAt).toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" })}
-              </p>
-            </div>
-            <p className="text-[14px] text-ios-secondary">{subjectOf(m)}</p>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <a href={mailto} className="inline-flex h-9 items-center gap-2 rounded-full bg-ios-blue px-4 text-[14px] font-medium text-white hover:bg-ios-blue-hover">
-            <Reply size={15} /> Svara
-          </a>
-          {m.kind === "sell" && (
-            <a href={telHref(m.phone)} className="inline-flex h-9 items-center gap-2 rounded-full bg-ios-blue/10 px-4 text-[14px] font-medium text-ios-blue">
-              <Phone size={15} /> Ring {m.phone}
-            </a>
-          )}
-          <a href={`mailto:${m.email}`} className="inline-flex h-9 items-center gap-2 rounded-full bg-ios-fill px-4 text-[14px] font-medium text-ios-label">
-            <Mail size={15} /> {m.email}
-          </a>
-        </div>
-
-        {m.kind === "sell" && (
-          <div className="rounded-[16px] bg-ios-fill2 p-4">
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {[
-                ["Märke", m.make],
-                ["Modell", m.model],
-                ["Årsmodell", String(m.year)],
-                ["Miltal", `${num(m.mileageKm)} km`],
-              ].map(([k, v]) => (
-                <div key={k}>
-                  <p className="text-[12px] text-ios-tertiary">{k}</p>
-                  <p className="text-[15px] font-semibold">{v}</p>
-                </div>
-              ))}
-            </div>
-            <Btn variant="tinted" size="sm" className="mt-4" icon={<Car size={14} />} onClick={createListing}>
-              Skapa annons från förfrågan
-            </Btn>
-          </div>
-        )}
-
-        <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-ios-label">
-          {m.kind === "sell" ? m.description || <span className="text-ios-tertiary">Ingen beskrivning.</span> : m.message}
-        </p>
-
-        <div className="border-t border-black/[.06] pt-5">
-          <p className="mb-1.5 px-1 text-[13px] font-medium text-ios-secondary">Intern anteckning</p>
-          <TextArea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            onBlur={() => note !== m.note && run(() => update.mutateAsync({ kind: m.kind, id: m.id, note }), "Anteckningen är sparad")}
-            placeholder="T.ex. ”Ringt, återkommer på fredag”"
+    <div>
+      <PageHeader title="Inkorg" subtitle={unread ? `${unread} ${unread === 1 ? "chatt väntar" : "chattar väntar"} på svar` : "Chattar, kontaktformuläret och ”Sälj din bil”"} />
+      {data && !data.mailConnected && (
+        <Link
+          to="/admin/installningar"
+          hash="epost"
+          className="mb-4 flex items-center gap-2 rounded-[14px] bg-ios-orange/10 px-4 py-3 text-[14px] text-ios-label"
+        >
+          <MailWarning size={18} className="shrink-0 text-ios-orange" />
+          <span className="flex-1">Anslut din Gmail så får kunderna dina svar på mejl när de lämnat sajten.</span>
+          <span className="font-medium text-ios-blue">Anslut</span>
+        </Link>
+      )}
+      <div className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
+        <div className={cn(id && "hidden lg:block")}>
+          <Segmented
+            className="mb-3"
+            value={status}
+            onChange={setStatus}
+            options={[
+              { value: "open", label: "Aktiva" },
+              { value: "archived", label: "Arkiverade" },
+            ]}
           />
+          {error && <ErrorBlock error={error} retry={() => refetch()} />}
+          {isLoading && <LoadingBlock />}
+          {data && items.length === 0 && (
+            <EmptyState
+              icon={<InboxIcon size={26} />}
+              title={status === "open" ? "Inga chattar" : "Inget arkiverat"}
+              text={status === "open" ? "När en kund skriver i chatten, kontaktformuläret eller ”Sälj din bil” hamnar det här." : undefined}
+            />
+          )}
+          {items.length > 0 && <ConversationList items={items} activeId={id} />}
+        </div>
+        <div className={cn(!id && "hidden lg:block")}>
+          {id ? (
+            <Thread key={id} id={id} onBack={back} />
+          ) : (
+            <div className="flex h-[calc(100dvh-260px)] min-h-[480px] items-center justify-center rounded-[18px] bg-white text-[15px] text-ios-tertiary shadow-ios-card">
+              Välj en chatt
+            </div>
+          )}
         </div>
       </div>
-    </Card>
+    </div>
   );
 }
