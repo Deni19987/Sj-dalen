@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Link, Outlet, useRouterState } from "@tanstack/react-router";
+import { Link, Outlet, useRouter, useRouterState } from "@tanstack/react-router";
 import {
   CalendarDays,
   Car,
@@ -17,7 +17,7 @@ import { Logo } from "../components/Logo";
 import { DEMO } from "../lib/api";
 import { cn } from "../lib/cn";
 import { login, logout, useIsLoggedIn, useOverview } from "./api";
-import { siteUrl } from "./helpers";
+import { revealHashTarget, siteUrl } from "./helpers";
 import { PushPrompt } from "./PushNotifications";
 import { Btn, FeedbackProvider, Sheet, Toggle } from "./ui";
 
@@ -119,8 +119,9 @@ function TabBar({ pathname }: { pathname: string }) {
 
   return (
     <>
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-black/[.08] bg-white/85 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden">
-        <div className="mx-auto grid max-w-lg grid-cols-5">
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-black/[.08] bg-white/85 pb-[max(6px,env(safe-area-inset-bottom))] backdrop-blur-xl lg:hidden">
+        {/* Luft åt sidorna så att ytterflikarna inte hamnar i telefonens rundade hörn */}
+        <div className="mx-auto grid max-w-lg grid-cols-5 pl-[max(12px,env(safe-area-inset-left))] pr-[max(12px,env(safe-area-inset-right))]">
           {main.map((item) => {
             const active = isActive(pathname, item);
             return (
@@ -239,6 +240,21 @@ function LoginScreen() {
 export function AdminLayout() {
   const loggedIn = useIsLoggedIn();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const hash = useRouterState({ select: (s) => s.location.hash });
+  const router = useRouter();
+
+  // Notislänkar med #del (t.ex. #affar, #bud, #bokning-…): scrolla fram och markera delen.
+  useEffect(() => (loggedIn && hash ? revealHashTarget(hash) : undefined), [loggedIn, pathname, hash]);
+
+  // Tryck på en notis när appen redan är öppen: service workern ber sidan byta vy (se public/sw.js).
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const onMessage = (e: MessageEvent) => {
+      if (e.data?.type === "notification-navigate" && typeof e.data.url === "string") router.history.push(e.data.url);
+    };
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+  }, [router]);
 
   useEffect(() => {
     const prevTitle = document.title;
@@ -265,7 +281,7 @@ export function AdminLayout() {
       ) : (
         <div className="flex min-h-dvh bg-ios-bg font-apple text-ios-label antialiased">
           <Sidebar pathname={pathname} />
-          <main className="min-w-0 flex-1 px-4 pb-28 pt-6 sm:px-8 sm:pt-10 lg:pb-12">
+          <main className="min-w-0 flex-1 px-4 pb-[calc(7rem+env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))] sm:px-8 sm:pt-10 lg:pb-12">
             <div className="mx-auto max-w-6xl">
               <Outlet />
             </div>

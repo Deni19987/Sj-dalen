@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { Link, useBlocker, useNavigate, useParams } from "@tanstack/react-router";
-import { ChevronLeft, Copy, ExternalLink, Gavel, Loader2, Mail, Phone, Plus, Search, Sparkles, Store, Trash2, X } from "lucide-react";
+import { ChevronDown, ChevronLeft, Copy, ExternalLink, Gavel, Loader2, Mail, Phone, Plus, Search, Sparkles, Store, Trash2, X } from "lucide-react";
 import { CarCard } from "../../components/CarCard";
 import { cn } from "../../lib/cn";
 import type { BodyType, Car, CarStatus } from "../../lib/types";
 import { lookupVehicle, suggestStandardEquipment, useAdminCars, useDeleteBid, useSaveCar, writeAdWithAi, type AdminCar, type CarFacts, type CarInput, type VehicleData } from "../api";
 import { BlocketSheet } from "../BlocketSheet";
-import { DealCard } from "../DealCard";
+import { inDealMode } from "../deal";
+import { DealWorkspace } from "../DealWorkspace";
 import { EquipmentPicker } from "../EquipmentPicker";
 import { BackLink } from "../../components/BackLink";
 import { MAKES } from "../../lib/vehicle";
@@ -364,7 +365,10 @@ function CarEditor({ car }: { car?: AdminCar }) {
   const save = useSaveCar();
   const run = useRun();
   const { toast, confirm } = useFeedback();
-  const { menuItems, sheets } = useCarActions({ onDeleted: () => navigate({ to: "/admin/bilar" }) });
+  const { menuItems, sheets, openDialog } = useCarActions({ onDeleted: () => navigate({ to: "/admin/bilar" }) });
+  // Avslutad eller såld bil: sidan blir en arbetsyta för affären, annonsen fälls ihop.
+  const dealMode = !!car && inDealMode(car);
+  const [showAd, setShowAd] = useState(false);
   const [form, setForm] = useState<Form>(() => fromCar(car));
   const [baseline, setBaseline] = useState(() => JSON.stringify(car ? fromCar(car) : form));
   const [titleTouched, setTitleTouched] = useState(!!car);
@@ -584,7 +588,25 @@ function CarEditor({ car }: { car?: AdminCar }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+      {dealMode && car && (
+        <>
+          <DealWorkspace car={car} onSell={() => openDialog({ type: "sell", car })} onRelist={() => openDialog({ type: "relist", car })} />
+          <button
+            type="button"
+            onClick={() => setShowAd((v) => !v)}
+            aria-expanded={showAd}
+            className="mb-6 flex w-full items-center justify-between rounded-[14px] bg-white px-5 py-3.5 text-left shadow-ios-card transition-colors hover:bg-ios-fill2"
+          >
+            <span>
+              <span className="block text-[15px] font-semibold">Annonsen och budhistoriken</span>
+              <span className="block text-[13px] text-ios-secondary">Bilder, uppgifter, pris och alla bud</span>
+            </span>
+            <ChevronDown size={20} className={cn("text-ios-tertiary transition-transform duration-300 ease-ios", showAd && "rotate-180")} />
+          </button>
+        </>
+      )}
+
+      <div className={cn("grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_340px]", dealMode && !showAd && "hidden", dealMode && showAd && "animate-ios-fade")}>
         <div className="space-y-6">
           <Section title="Hämta bilens uppgifter" description="Hämta allt från Transportstyrelsen i två steg – eller hoppa över och fyll i själv nedan.">
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -853,7 +875,6 @@ function CarEditor({ car }: { car?: AdminCar }) {
 
         {/* Sidokolumn */}
         <div className="space-y-6 lg:sticky lg:top-24 lg:self-start">
-          {car && <DealCard car={car} />}
           <Section title="Publicering">
             <Field label="Status">
               <Select value={form.status} onChange={(e) => set("status", e.target.value as CarStatus)}>
@@ -936,7 +957,7 @@ function BidsCard({ car }: { car: AdminCar }) {
   }
 
   return (
-    <Card padded={false}>
+    <Card id="bud" padded={false} className="scroll-mt-24">
       <div className="flex items-center justify-between px-5 pb-2 pt-5">
         <h2 className="text-[17px] font-semibold tracking-[-0.01em]">Bud</h2>
         <span className="text-[13px] text-ios-secondary">{bids.length} st</span>

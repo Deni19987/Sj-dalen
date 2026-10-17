@@ -89,7 +89,7 @@ export async function onBidPlaced(
     await sendPush(query, env, "reserve", {
       title: "Reservationspriset är uppnått",
       body: `${car.title} – ${kr(bid.amount)} av ${bid.name}`,
-      url: `/admin/bilar/${encodeURIComponent(car.id)}`,
+      url: `/admin/bilar/${encodeURIComponent(car.id)}#bud`,
       tag: `reserve-${car.id}`,
     });
 
@@ -134,7 +134,7 @@ export async function runAuctionChecks(query: Query, env: Env, origin: string) {
     await sendPush(query, env, "ending", {
       title: "Slutar inom en timme",
       body: `${c.title} – ${c.n ? `${kr(c.top)}, ${c.n} bud` : "inga bud än"}`,
-      url: `/admin/bilar/${encodeURIComponent(c.id)}`,
+      url: `/admin/bilar/${encodeURIComponent(c.id)}#bud`,
       tag: `ending-${c.id}`,
     });
     done.push(`ending:${c.id}`);
@@ -148,7 +148,7 @@ export async function runAuctionChecks(query: Query, env: Env, origin: string) {
     returning c.id, c.title, c.reserve_price`);
   for (const c of ended) {
     const top = await topBid(query, c.id);
-    const url = `/admin/bilar/${encodeURIComponent(c.id)}`;
+    const url = `/admin/bilar/${encodeURIComponent(c.id)}#affar`;
     if (!top) {
       await sendPush(query, env, "ended", { title: "Auktionen slutade utan bud", body: `${c.title} – lägg ut igen eller sänk utropspriset`, url, tag: `ended-${c.id}` });
     } else if (c.reserve_price != null && top.amount < c.reserve_price) {
@@ -206,7 +206,7 @@ export async function runAuctionChecks(query: Query, env: Env, origin: string) {
        and (reminded_payment_at is null or reminded_pickup_at is null)`);
   for (const c of open) {
     const deal = c.deal ?? {};
-    const url = `/admin/bilar/${encodeURIComponent(c.id)}`;
+    const url = `/admin/bilar/${encodeURIComponent(c.id)}#affar`;
     if (!deal.paidAt && deal.contactedAt && addBusinessDays(new Date(deal.contactedAt), t.paymentDays) < new Date()) {
       const r = await query("update cars set reminded_payment_at = now() where id = $1 and reminded_payment_at is null returning id", [c.id]);
       if (r.length) {

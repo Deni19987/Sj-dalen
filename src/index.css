@@ -63,3 +63,17 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Admin: delen av sidan som en notis pekade på lyser upp en kort stund (se revealHashTarget). */
+.hash-flash {
+  animation: hash-flash 1.8s cubic-bezier(0.32, 0.72, 0, 1);
+}
+@keyframes hash-flash {
+  0%,
+  35% {
+    box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.45);
+  }
+  100% {
+    box-shadow: 0 0 0 3px rgba(0, 113, 227, 0);
+  }
+}

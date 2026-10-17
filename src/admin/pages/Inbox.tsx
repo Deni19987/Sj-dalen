@@ -155,7 +155,13 @@ function useThread(id: string) {
 function Thread({ id, onBack }: { id: string; onBack: () => void }) {
   const { conv, messages, error, send } = useThread(id);
   const { data: settings } = useSettings();
-  const [text, setText] = useState("");
+  // ?utkast=… – ett färdigt meddelande (t.ex. betalningsuppgifter till köparen) att ändra och skicka
+  const [text, setText] = useState(() => new URLSearchParams(window.location.search).get("utkast") ?? "");
+  useEffect(() => {
+    if (!new URLSearchParams(window.location.search).has("utkast")) return;
+    window.history.replaceState(window.history.state, "", window.location.pathname);
+    input.current?.focus();
+  }, []);
   const [note, setNote] = useState<{ text: string; warn?: boolean } | null>(null);
   const lastTyping = useRef(0);
   const list = useRef<HTMLDivElement>(null);
@@ -289,6 +295,11 @@ function Thread({ id, onBack }: { id: string; onBack: () => void }) {
             </div>
           );
         })}
+        {conv && messages.length === 0 && (
+          <p className="mx-auto max-w-[280px] py-10 text-center text-[14px] text-ios-tertiary">
+            Skriv det första meddelandet – {conv.name ? conv.name.split(" ")[0] : "kunden"} får det även på mejl med en länk till chatten.
+          </p>
+        )}
         {conv?.customerTyping && (
           <div className="flex animate-ios-fade">
             <span className="flex items-center gap-1 rounded-[18px] rounded-bl-md bg-white px-3.5 py-3 lg:bg-ios-fill2">

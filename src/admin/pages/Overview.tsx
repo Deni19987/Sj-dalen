@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { ArrowRight, CalendarDays, Car, ChevronRight, Gavel, Inbox, MessageSquare, Plus, Tag, TrendingUp, Wallet } from "lucide-react";
 import { cn } from "../../lib/cn";
 import { useAdminCars, useOverview, type Overview } from "../api";
+import { dealSteps, needsDealAction, nextDealStep } from "../deal";
 import { carState, currentPrice, highestBid, kr, mailTime, num, relativeTime, reserveMet } from "../helpers";
 import { Card, ErrorBlock, PageHeader, Pill, SectionLabel, Skeleton } from "../ui";
 import { imageUrl } from "../../lib/api";
@@ -126,7 +127,8 @@ export function OverviewPage() {
   const { needsAction, endingSoon } = useMemo(() => {
     const list = cars.data ?? [];
     return {
-      needsAction: list.filter((c) => carState(c, now) === "ended"),
+      // Avslutade auktioner och sålda bilar där affären inte är klar – äldst först
+      needsAction: list.filter((c) => needsDealAction(c, now)).sort((a, b) => a.endsAt.localeCompare(b.endsAt)),
       endingSoon: list
         .filter((c) => ["live", "ending"].includes(carState(c, now)))
         .sort((a, b) => a.endsAt.localeCompare(b.endsAt))
@@ -170,17 +172,28 @@ export function OverviewPage() {
           <Card padded={false} className="divide-y divide-black/[.05] overflow-hidden">
             {needsAction.map((car) => {
               const top = highestBid(car);
+              const sold = car.status === "sold";
+              const next = nextDealStep(car);
+              const steps = dealSteps(car);
+              const done = steps.filter((s) => s.done).length;
+              const late = steps.some((s) => !s.done && s.due && s.due.getTime() < now);
               return (
-                <Link key={car.id} to="/admin/bilar/$id" params={{ id: car.id }} className="flex items-center gap-3 px-4 py-3 transition hover:bg-ios-fill2">
+                <Link key={car.id} to="/admin/bilar/$id" params={{ id: car.id }} hash="affar" className="flex items-center gap-3 px-4 py-3 transition hover:bg-ios-fill2">
                   <Thumb car={car} />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[15px] font-semibold">{car.title}</p>
-                    <p className="text-[13px] text-ios-secondary">
-                      Avslutades {relativeTime(car.endsAt)} · {top ? `${kr(top.amount)} av ${top.name}` : "inga bud"}
+                    <p className="truncate text-[13px] text-ios-secondary">
+                      {sold
+                        ? `Såld för ${kr(car.soldPrice ?? top?.amount ?? 0)}${top ? ` till ${top.name}` : ""}`
+                        : `Avslutades ${relativeTime(car.endsAt)} · ${top ? `${kr(top.amount)} av ${top.name}` : "inga bud"}`}
+                    </p>
+                    <p className={cn("text-[13px] font-medium", late ? "text-ios-red" : "text-ios-blue")}>
+                      {late ? "Försenad: " : "Nästa: "}
+                      {!top && !sold ? "Lägg ut igen" : next?.label}
+                      {sold && <span className="font-normal text-ios-tertiary"> · {done} av {steps.length} klart</span>}
                     </p>
                   </div>
-                  {!reserveMet(car) && <Pill tone="orange">Reservpris ej nått</Pill>}
-                  <span className="hidden text-[13px] font-medium text-ios-blue sm:block">Sälj eller lägg ut igen</span>
+                  {!sold && !reserveMet(car) && <Pill tone="orange">Reservpris ej nått</Pill>}
                   <ChevronRight size={16} className="text-ios-separator" />
                 </Link>
               );
